@@ -1,0 +1,90 @@
+# Mobile capability declaration for V1.
+#
+# Anything false here must have no permission string in the iOS Info.plist or
+# the Android manifest. Store review treats a declared-but-unused permission as
+# a defect, and the product does not need any of these to run a session.
+schema_version: 1
+program: Program001
+platform_permissions:
+  camera:
+    requested: false
+    rationale: No posture or facial analysis in V1.
+    deferred_to: null
+  microphone:
+    requested: false
+    rationale: Sessions are guided by on-screen text; no audio capture.
+    deferred_to: null
+  location:
+    requested: false
+    rationale: Practice selection depends on the self-reported check-in only.
+    deferred_to: null
+  photo_library:
+    requested: false
+    rationale: No user media in V1.
+    deferred_to: null
+  contacts:
+    requested: false
+    rationale: No social features in V1.
+    deferred_to: null
+  notifications:
+    requested: false
+    rationale: >-
+      Practice reminders are a Program005 personalization feature. V1 ships no
+      notification prompt at all rather than asking for a permission it does not
+      yet use.
+    deferred_to: Program005
+  healthkit:
+    requested: false
+    rationale: Health integration is out of V1 scope.
+    deferred_to: Program008
+  health_connect:
+    requested: false
+    rationale: Health integration is out of V1 scope.
+    deferred_to: Program008
+  background_refresh:
+    requested: false
+    rationale: The session player runs in the foreground only.
+    deferred_to: null
+store_sensitive_capabilities:
+  apple_iap:
+    implemented: false
+    isolated_behind_adapter: true
+    adapter: BillingProvider
+    deferred_to: Program006
+  google_play_billing:
+    implemented: false
+    isolated_behind_adapter: true
+    adapter: BillingProvider
+    deferred_to: Program006
+  account_authentication:
+    implemented: false
+    isolated_behind_adapter: true
+    adapter: AuthProvider
+    deferred_to: Program003
+  push_notifications:
+    implemented: false
+    isolated_behind_adapter: true
+    adapter: NotificationProvider
+    deferred_to: Program005
+  secure_storage:
+    implemented: true
+    isolated_behind_adapter: true
+    adapter: SecureStorageProvider
+    notes: >-
+      V1 stores only a local guest session identifier and local session history.
+      No credential and no health data are held.
+  text_to_speech:
+    implemented: false
+    isolated_behind_adapter: true
+    adapter: TTSProvider
+    deferred_to: Program004
+guest_usage:
+  registration_required: false
+  fake_identity_generated: false
+  notes: >-
+    Check-ins and sessions are created with no account. user_id is nullable in
+    the schema and is never populated in Program001.
+claims:
+  medical_diagnosis: false
+  medical_treatment: false
+  advertising_use_of_wellness_data: false

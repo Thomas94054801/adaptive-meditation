@@ -1,0 +1,55 @@
+schema_version: 1
+product_positioning: wellness
+medical_diagnosis: false
+medical_treatment_claims: false
+individual_first: true
+v1:
+  identity:
+    email:
+      collected: optional
+      purpose: [account, authentication]
+      deletable: true
+      advertising_use: false
+  wellness:
+    check_in:
+      collected: true
+      fields: [goal, stress, energy, mental_activity, sleepiness, available_minutes, experience_level]
+      purpose: [practice_recommendation, personalization]
+      deletable: true
+      advertising_use: false
+    session_history:
+      collected: true
+      purpose: [history, personalization, product_analytics]
+      deletable: true
+      advertising_use: false
+    feedback:
+      collected: true
+      purpose: [outcome_measurement, personalization, quality_improvement]
+      deletable: true
+      advertising_use: false
+  health:
+    healthkit:
+      collected: false
+      deferred_to: Program008
+    health_connect:
+      collected: false
+      deferred_to: Program008
+    garmin:
+      collected: false
+      deferred_to: Program008
+  sensors:
+    camera:
+      permission_required: false
+    microphone:
+      permission_required: false
+    location:
+      permission_required: false
+  ai:
+    user_text_to_generation:
+      enabled: planned
+      safety_router_required: true
+      report_output_required: true
+  commerce:
+    apple_iap: planned
+    google_play_billing: planned
+    entitlement_service: required

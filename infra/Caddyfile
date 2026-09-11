@@ -1,0 +1,33 @@
+# Reverse proxy for the Program001 API.
+#
+# SITE_ADDRESS is :80 for local use and a hostname in production, where Caddy
+# then provisions and renews TLS automatically. No certificate material is
+# stored in this repository.
+{$SITE_ADDRESS} {
+	encode zstd gzip
+
+	# Bounded request bodies: the API accepts small JSON documents only.
+	request_body {
+		max_size 64KB
+	}
+
+	header {
+		X-Content-Type-Options nosniff
+		X-Frame-Options DENY
+		Referrer-Policy strict-origin-when-cross-origin
+		-Server
+	}
+
+	handle /healthz {
+		reverse_proxy api:8000
+	}
+
+	handle {
+		reverse_proxy api:8000
+	}
+
+	log {
+		output stdout
+		format console
+	}
+}

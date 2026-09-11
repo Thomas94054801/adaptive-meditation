@@ -1,0 +1,44 @@
+schema_version: 1
+practices:
+  - id: breath_awareness
+    public_name: Breath Awareness
+    intent: stabilize_attention
+    suitable_for: [stress, overthinking, focus, general]
+    source_basis: anapanasati
+    user_facing_source_label: null
+    default_guidance_density: 0.65
+  - id: body_awareness
+    public_name: Body Awareness
+    intent: ground_in_direct_experience
+    suitable_for: [stress, overthinking, sleep, general]
+    source_basis: kayanupassana
+    user_facing_source_label: null
+    default_guidance_density: 0.60
+  - id: feeling_tone
+    public_name: Feeling Tone
+    intent: recognize_reactivity_early
+    suitable_for: [stress, overthinking, emotional_reset]
+    source_basis: vedananupassana
+    user_facing_source_label: null
+    default_guidance_density: 0.55
+  - id: thought_observation
+    public_name: Thought Observation
+    intent: reduce_identification_with_mental_events
+    suitable_for: [overthinking, stress, general]
+    source_basis: cittanupassana
+    user_facing_source_label: null
+    default_guidance_density: 0.50
+  - id: kindness
+    public_name: Kindness Practice
+    intent: cultivate_non_hostility
+    suitable_for: [emotional_reset, stress, general]
+    source_basis: metta
+    user_facing_source_label: null
+    default_guidance_density: 0.65
+  - id: open_awareness
+    public_name: Open Awareness
+    intent: observe_changing_experience_without_grasping
+    suitable_for: [general, focus, emotional_reset]
+    source_basis: satipatthana
+    user_facing_source_label: null
+    default_guidance_density: 0.35

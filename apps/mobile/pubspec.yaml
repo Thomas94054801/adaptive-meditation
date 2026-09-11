@@ -1,0 +1,25 @@
+name: adaptive_meditation
+description: Adaptive Meditation - state check-in to a deterministic practice session.
+publish_to: "none"
+
+# The product identity is deliberately separate from the legal owner identity so
+# a later move from an individual publisher to a company does not require a
+# rewrite. Bundle identifiers are set per platform, not derived from a name here.
+version: 0.1.0+1
+
+environment:
+  sdk: ^3.9.0
+
+dependencies:
+  flutter:
+    sdk: flutter
+  http: ^1.2.2
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+  yaml: ^3.1.4
+
+flutter:
+  uses-material-design: true
