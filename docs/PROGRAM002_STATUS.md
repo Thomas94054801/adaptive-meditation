@@ -139,3 +139,9 @@ n = 20,000 / 3,000 / 600 / 200.
    `encrypted_at_rest: false` in the compliance manifest.
 5. **Session plan adaptation is unmeasured.** Stage weights adapt and the total
    stays exact, but no evidence says the adapted plan produces better outcomes.
+6. **The suite is not safe to run twice concurrently against one database.**
+   The schema fixture drops and recreates it per session, so two simultaneous
+   local runs corrupt each other - observed once as 12 spurious failures, which
+   disappeared on a clean single run (234 passed, twice). CI is unaffected: each
+   run gets its own PostgreSQL service container. Worth fixing with a per-run
+   schema or database name before anyone runs the suite in parallel locally.
