@@ -1,24 +1,27 @@
-"""Recommendation engine tests - SDD section 15.1.
+"""Rule set v2: golden cases and invariants over the full state space.
 
-The numbered cases below are the SDD's required matrix, kept in its order so a
-reviewer can check them off one for one.
+The Program001 matrix lives in ``test_v1_replay.py`` and is not repeated here;
+v2 is a deliberate change and asserting v1's answers against it would be wrong.
+The four v2 golden cases are SDD_PROGRAM002 section 3.
 """
 
 from __future__ import annotations
 
 import itertools
+from collections.abc import Iterator
 
 import pytest
 
-from app.domain.practice.catalog import KnowledgeCatalog, KnowledgeValidationError
+from app.domain.practice.catalog import KnowledgeCatalog
 from app.domain.recommendation.engine import RecommendationEngine
-from app.domain.recommendation.rules import (
-    ALLOWED_REASON_CODES,
-    RULES_VERSION,
-    PracticeId,
-    ReasonCode,
-    select_practice,
+from app.domain.recommendation.rules_v2 import (
+    ALLOWED_REASON_CODES_V2,
+    BASE_AFFINITY,
+    MODIFIERS,
+    PRACTICE_ORDER,
 )
+from app.domain.recommendation.scoring import SCORE_MAX, SCORE_MIN
+from app.domain.recommendation.versions import ENGINE_VERSION
 from app.domain.state.models import (
     AVAILABLE_MINUTES,
     CheckIn,
@@ -27,19 +30,17 @@ from app.domain.state.models import (
     StateVector,
 )
 
-# Practices the V1 rules can actually select. kindness is declared in the
-# knowledge files and has an executable protocol, but no rule reaches it yet;
-# that is Program002 work and is asserted here so it cannot become a silent gap.
-REACHABLE_PRACTICES = frozenset(
-    {
-        PracticeId.BREATH_AWARENESS,
-        PracticeId.BODY_AWARENESS,
-        PracticeId.FEELING_TONE,
-        PracticeId.THOUGHT_OBSERVATION,
-        PracticeId.OPEN_AWARENESS,
-    }
-)
-DECLARED_BUT_UNREACHABLE = frozenset({PracticeId.KINDNESS})
+# Every practice the v2 rules must be able to reach. Program001 left kindness
+# unreachable and had no mindful_walking at all; both are closed here.
+EXPECTED_REACHABLE = {
+    "breath_awareness",
+    "body_awareness",
+    "feeling_tone",
+    "thought_observation",
+    "kindness",
+    "open_awareness",
+    "mindful_walking",
+}
 
 
 def make_check_in(**overrides: object) -> CheckIn:
@@ -56,279 +57,252 @@ def make_check_in(**overrides: object) -> CheckIn:
     return CheckIn.model_validate(payload)
 
 
-# --- 15.1 required cases ------------------------------------------------------
+def iter_states(sample: int = 1) -> Iterator[StateVector]:
+    """The reachable state space, optionally thinned by ``sample``.
 
+    ``sample=1`` is the full 1,317,690-state enumeration, including energy 0..10.
+    Program001 pinned energy because no rule read it; v2 does, so pinning it
+    would describe a space the rules do not live in.
 
-def test_case_1_overthinking_high_activity_high_stress(engine: RecommendationEngine) -> None:
-    """goal=overthinking, mental_activity=9, stress=8 -> body_awareness."""
-    result = engine.recommend(make_check_in(goal="overthinking", mental_activity=9, stress=8))
-    assert result.practice_id == "body_awareness"
-    assert result.reason_codes == ("goal_overthinking", "high_mental_activity", "high_stress")
-    assert result.recommendation_version == RULES_VERSION
-
-
-def test_case_2_overthinking_high_activity_low_stress(engine: RecommendationEngine) -> None:
-    result = engine.recommend(make_check_in(goal="overthinking", mental_activity=9, stress=3))
-    assert result.practice_id == "thought_observation"
-    assert result.reason_codes == (
-        "goal_overthinking",
-        "high_mental_activity",
-        "cognitive_observation",
-    )
-
-
-def test_case_3_sleep(engine: RecommendationEngine) -> None:
-    for mental_activity in range(11):
-        result = engine.recommend(make_check_in(goal="sleep", mental_activity=mental_activity))
-        assert result.practice_id == "body_awareness"
-        assert "goal_sleep" in result.reason_codes
-        assert "grounding_preferred" in result.reason_codes
-
-
-def test_case_4_focus_high_sleepiness(engine: RecommendationEngine) -> None:
-    result = engine.recommend(make_check_in(goal="focus", sleepiness=8))
-    assert result.practice_id == "body_awareness"
-    assert result.reason_codes == ("goal_focus", "high_sleepiness")
-
-
-def test_case_5_focus_low_sleepiness(engine: RecommendationEngine) -> None:
-    result = engine.recommend(make_check_in(goal="focus", sleepiness=2))
-    assert result.practice_id == "breath_awareness"
-    assert result.reason_codes == ("goal_focus", "stabilize_attention")
-
-
-def test_case_6_stress_very_high(engine: RecommendationEngine) -> None:
-    result = engine.recommend(make_check_in(goal="stress", stress=9))
-    assert result.practice_id == "body_awareness"
-    assert result.reason_codes == ("goal_stress", "very_high_stress")
-
-
-def test_case_7_stress_low_experienced(engine: RecommendationEngine) -> None:
-    result = engine.recommend(
-        make_check_in(goal="stress", stress=2, experience_level="experienced")
-    )
-    assert result.practice_id == "open_awareness"
-    assert result.reason_codes == ("goal_stress", "experienced_open_awareness")
-
-
-def test_case_8_general_beginner(engine: RecommendationEngine) -> None:
-    result = engine.recommend(make_check_in(goal="general", experience_level="beginner"))
-    assert result.practice_id == "breath_awareness"
-    assert result.reason_codes == ("goal_general",)
-
-
-def test_case_9_general_experienced(engine: RecommendationEngine) -> None:
-    result = engine.recommend(make_check_in(goal="general", experience_level="experienced"))
-    assert result.practice_id == "open_awareness"
-    assert result.reason_codes == ("goal_general", "experience_progression")
-
-
-def test_case_10_repeated_input_is_identical(engine: RecommendationEngine) -> None:
-    """Same normalized input, 100 times, byte-identical output."""
-    check_in = make_check_in(goal="overthinking", mental_activity=9, stress=8)
-    first = engine.recommend(check_in)
-    serialized = first.model_dump_json()
-    for _ in range(100):
-        assert engine.recommend(check_in).model_dump_json() == serialized
-
-
-# --- additional rule coverage -------------------------------------------------
-
-
-def test_stress_moderate_band(engine: RecommendationEngine) -> None:
-    result = engine.recommend(make_check_in(goal="stress", stress=6))
-    assert result.practice_id == "breath_awareness"
-    assert result.reason_codes == ("goal_stress", "moderate_stress")
-
-
-def test_stress_low_non_experienced_stays_with_breath(engine: RecommendationEngine) -> None:
-    for level in (ExperienceLevel.BEGINNER, ExperienceLevel.INTERMEDIATE):
-        result = engine.recommend(
-            make_check_in(goal="stress", stress=1, experience_level=level.value)
-        )
-        assert result.practice_id == "breath_awareness"
-        assert result.reason_codes == ("goal_stress",)
-
-
-def test_overthinking_low_activity_uses_breath(engine: RecommendationEngine) -> None:
-    result = engine.recommend(make_check_in(goal="overthinking", mental_activity=3, stress=9))
-    assert result.practice_id == "breath_awareness"
-    assert result.reason_codes == ("goal_overthinking",)
-
-
-@pytest.mark.parametrize(
-    ("level", "expected"),
-    [
-        ("beginner", "body_awareness"),
-        ("intermediate", "feeling_tone"),
-        ("experienced", "feeling_tone"),
-    ],
-)
-def test_emotional_reset_by_experience(
-    engine: RecommendationEngine, level: str, expected: str
-) -> None:
-    result = engine.recommend(make_check_in(goal="emotional_reset", experience_level=level))
-    assert result.practice_id == expected
-
-
-def test_general_intermediate(engine: RecommendationEngine) -> None:
-    result = engine.recommend(make_check_in(goal="general", experience_level="intermediate"))
-    assert result.practice_id == "body_awareness"
-
-
-# --- invariants over the whole reachable input space --------------------------
-
-
-def iter_states() -> list[StateVector]:
-    """Every combination of the dimensions the rules actually read.
-
-    energy is not read by any V1 rule, so it is pinned rather than crossed; the
-    ``test_energy_does_not_change_the_outcome`` case below proves that claim
-    instead of assuming it.
+    Thinning is by stride over the scale axes, never by random choice, so a
+    thinned run is as reproducible as a full one.
     """
-    states = []
-    for goal, stress, mental_activity, sleepiness, minutes, level in itertools.product(
-        Goal, range(11), range(11), range(11), AVAILABLE_MINUTES, ExperienceLevel
+    scale = range(0, 11, sample)
+    for goal, stress, energy, mental, sleepy, minutes, level in itertools.product(
+        Goal, scale, scale, scale, scale, AVAILABLE_MINUTES, ExperienceLevel
     ):
-        states.append(
-            StateVector(
-                goal=goal,
-                experience_level=level,
-                available_minutes=minutes,  # type: ignore[arg-type]
-                stress=stress,
-                energy=5,
-                mental_activity=mental_activity,
-                sleepiness=sleepiness,
-            )
+        yield StateVector(
+            goal=goal,
+            experience_level=level,
+            available_minutes=minutes,  # type: ignore[arg-type]
+            stress=stress,
+            energy=energy,
+            mental_activity=mental,
+            sleepiness=sleepy,
         )
-    return states
+
+
+FULL_STATE_SPACE_SIZE = 6 * 11 * 11 * 11 * 11 * 5 * 3  # 1,317,690
 
 
 @pytest.fixture(scope="module")
-def all_states() -> list[StateVector]:
-    return iter_states()
+def sampled_states() -> list[StateVector]:
+    """A strided sample, for the invariants that are too slow over the full space."""
+    return list(iter_states(sample=2))
 
 
-def test_every_state_produces_a_known_practice(
-    engine: RecommendationEngine, catalog: KnowledgeCatalog, all_states: list[StateVector]
+# --- SDD_PROGRAM002 section 3: golden cases ----------------------------------
+
+
+def test_golden_a_v1_behaviour_preserved(engine: RecommendationEngine) -> None:
+    """goal=overthinking, mental_activity=9, stress=8 -> body_awareness."""
+    result = engine.recommend(make_check_in(goal="overthinking", mental_activity=9, stress=8))
+    assert result.practice_id == "body_awareness"
+    # Identical to v1, codes included: see test_v1_replay for the v1 side.
+    assert result.reason_codes == ("goal_overthinking", "high_mental_activity", "high_stress")
+
+
+def test_golden_b_kindness_is_reachable(engine: RecommendationEngine) -> None:
+    """goal=emotional_reset, stress=7, mental_activity=4 -> kindness."""
+    result = engine.recommend(make_check_in(goal="emotional_reset", stress=7, mental_activity=4))
+    assert result.practice_id == "kindness"
+    assert "self_directed_care" in result.reason_codes
+
+
+def test_golden_c_energy_is_load_bearing(engine: RecommendationEngine) -> None:
+    """goal=focus, energy=9, stress=4, available_minutes=10 -> mindful_walking."""
+    result = engine.recommend(make_check_in(goal="focus", energy=9, stress=4, available_minutes=10))
+    assert result.practice_id == "mindful_walking"
+    assert "high_energy" in result.reason_codes
+
+
+def test_golden_d_open_awareness_eligible(engine: RecommendationEngine) -> None:
+    """goal=general, experienced, stress=2, mental_activity=3 -> open_awareness."""
+    state = StateVector.from_check_in(
+        make_check_in(goal="general", experience_level="experienced", stress=2, mental_activity=3)
+    )
+    outcome = engine.evaluate(state)
+    eligible = {candidate.practice_id.value for candidate in outcome.candidates}
+    assert "open_awareness" in eligible
+    assert outcome.winner.practice_id.value == "open_awareness"
+
+
+# --- energy sensitivity -------------------------------------------------------
+
+
+def test_lowering_energy_alone_changes_the_recommendation(engine: RecommendationEngine) -> None:
+    """The falsifiable half of the energy rule.
+
+    If energy could be removed without changing an answer, it would be a dead
+    input again, which is the Program001 gap this closes.
+    """
+    high = engine.recommend(make_check_in(goal="focus", energy=9, stress=4))
+    low = engine.recommend(make_check_in(goal="focus", energy=2, stress=4))
+    assert high.practice_id == "mindful_walking"
+    assert low.practice_id == "breath_awareness"
+    assert "low_energy" in low.reason_codes
+
+
+def test_energy_threshold_is_where_it_is_declared(engine: RecommendationEngine) -> None:
+    for energy in range(11):
+        result = engine.recommend(make_check_in(goal="focus", energy=energy, stress=4))
+        expected = "mindful_walking" if energy >= 7 else "breath_awareness"
+        assert result.practice_id == expected, energy
+
+
+def test_energy_is_scoped_to_focus(engine: RecommendationEngine) -> None:
+    """Outside focus, energy carries no declared meaning and must not move anything."""
+    for goal in Goal:
+        if goal is Goal.FOCUS:
+            continue
+        baseline = engine.recommend(make_check_in(goal=goal.value, energy=0)).practice_id
+        for energy in range(1, 11):
+            other = engine.recommend(make_check_in(goal=goal.value, energy=energy))
+            assert other.practice_id == baseline, (goal, energy)
+
+
+# --- reachability -------------------------------------------------------------
+
+
+def test_every_intended_practice_is_reachable(
+    engine: RecommendationEngine, sampled_states: list[StateVector]
 ) -> None:
-    """15.5: the engine must never return a practice_id the catalog does not know."""
+    reached = {engine.recommend_for_state(state).practice_id for state in sampled_states}
+    assert reached == EXPECTED_REACHABLE
+
+
+def test_mindful_walking_is_never_offered_against_its_contraindications(
+    engine: RecommendationEngine, sampled_states: list[StateVector]
+) -> None:
+    for state in sampled_states:
+        if engine.recommend_for_state(state).practice_id == "mindful_walking":
+            assert state.goal is not Goal.SLEEP
+            assert not state.high_sleepiness
+
+
+def test_open_awareness_is_never_offered_to_a_beginner(
+    engine: RecommendationEngine, sampled_states: list[StateVector]
+) -> None:
+    for state in sampled_states:
+        if state.experience_level is ExperienceLevel.BEGINNER:
+            assert engine.recommend_for_state(state).practice_id != "open_awareness"
+
+
+def test_an_experienced_user_can_still_get_a_basic_practice(
+    engine: RecommendationEngine, sampled_states: list[StateVector]
+) -> None:
+    """Experience adjusts ranking; it must not remove eligibility."""
+    reached = {
+        engine.recommend_for_state(state).practice_id
+        for state in sampled_states
+        if state.experience_level is ExperienceLevel.EXPERIENCED
+    }
+    assert {"breath_awareness", "body_awareness"} <= reached
+
+
+# --- invariants over the state space -----------------------------------------
+
+
+def test_state_space_cardinality_is_what_we_claim() -> None:
+    """Guards the number quoted in the docs against silently drifting."""
+    assert sum(1 for _ in iter_states(sample=1)) == FULL_STATE_SPACE_SIZE
+    assert FULL_STATE_SPACE_SIZE == 1_317_690
+
+
+def test_invariants_hold_across_the_sampled_space(
+    engine: RecommendationEngine, catalog: KnowledgeCatalog, sampled_states: list[StateVector]
+) -> None:
     known = set(catalog.practice_ids())
-    for state in all_states:
+    for state in sampled_states:
         result = engine.recommend_for_state(state)
+
         assert result.practice_id in known
-
-
-def test_reason_codes_stay_inside_the_goal_vocabulary(
-    engine: RecommendationEngine, all_states: list[StateVector]
-) -> None:
-    for state in all_states:
-        allowed = {code.value for code in ALLOWED_REASON_CODES[state.goal]}
-        result = engine.recommend_for_state(state)
-        assert result.reason_codes[0] == f"goal_{state.goal.value}"
-        assert set(result.reason_codes) <= allowed
-        assert len(set(result.reason_codes)) == len(result.reason_codes)
-
-
-def test_guidance_density_always_inside_the_protocol_range(
-    engine: RecommendationEngine, catalog: KnowledgeCatalog, all_states: list[StateVector]
-) -> None:
-    """15.5: density must never fall outside the selected protocol's declared range."""
-    for state in all_states:
-        result = engine.recommend_for_state(state)
+        practice = catalog.practice(result.practice_id)
         protocol = catalog.protocol_for(result.practice_id)
+
+        assert not practice.is_contraindicated_for(state)
+        assert practice.meets_experience_floor(state.experience_level)
+        assert protocol.supports_duration(result.duration_minutes)
+        assert result.duration_minutes <= state.available_minutes
         low, high = protocol.guidance_density_range
         assert low <= result.guidance_density <= high
         assert round(result.guidance_density, 2) == result.guidance_density
 
+        allowed = {code.value for code in ALLOWED_REASON_CODES_V2[state.goal]}
+        assert result.reason_codes[0] == f"goal_{state.goal.value}"
+        assert set(result.reason_codes) <= allowed
+        assert len(set(result.reason_codes)) == len(result.reason_codes)
 
-def test_duration_never_exceeds_available_minutes(
-    engine: RecommendationEngine, all_states: list[StateVector]
-) -> None:
-    for state in all_states:
-        result = engine.recommend_for_state(state)
-        assert result.duration_minutes <= state.available_minutes
-
-
-def test_energy_does_not_change_the_outcome(engine: RecommendationEngine) -> None:
-    """energy is collected for future rules; no V1 rule may depend on it."""
-    for goal in Goal:
-        base = make_check_in(goal=goal.value, energy=0)
-        expected = engine.recommend(base).model_dump_json()
-        for energy in range(1, 11):
-            other = make_check_in(goal=goal.value, energy=energy)
-            assert engine.recommend(other).model_dump_json() == expected
+        assert result.engine_version == ENGINE_VERSION
+        assert result.rule_set_version == "2"
+        assert result.state_fingerprint == state.fingerprint()
 
 
-def test_reachable_practice_set_is_exactly_as_documented(all_states: list[StateVector]) -> None:
-    reached = {select_practice(state).primary for state in all_states}
-    assert reached == REACHABLE_PRACTICES
-    assert reached.isdisjoint(DECLARED_BUT_UNREACHABLE)
-
-
-def test_identical_fingerprints_give_identical_recommendations(
-    engine: RecommendationEngine, all_states: list[StateVector]
+def test_identical_input_gives_identical_output(
+    engine: RecommendationEngine, sampled_states: list[StateVector]
 ) -> None:
     seen: dict[str, str] = {}
-    for state in all_states:
-        result = engine.recommend_for_state(state).model_dump_json()
-        fingerprint = state.fingerprint()
-        assert seen.setdefault(fingerprint, result) == result
+    for state in sampled_states:
+        serialized = engine.recommend_for_state(state).model_dump_json()
+        assert seen.setdefault(state.fingerprint(), serialized) == serialized
 
 
-# --- fallback resolution ------------------------------------------------------
+def test_repeating_one_input_is_stable(engine: RecommendationEngine) -> None:
+    subject = make_check_in(goal="emotional_reset", stress=7, mental_activity=4)
+    serialized = engine.recommend(subject).model_dump_json()
+    for _ in range(100):
+        assert engine.recommend(subject).model_dump_json() == serialized
 
 
-def test_sleep_declares_a_fallback_when_mental_activity_is_high() -> None:
-    state = StateVector(
-        goal=Goal.SLEEP,
-        experience_level=ExperienceLevel.BEGINNER,
-        available_minutes=10,
-        stress=4,
-        energy=5,
-        mental_activity=9,
-        sleepiness=4,
-    )
-    selection = select_practice(state)
-    assert selection.primary is PracticeId.BODY_AWARENESS
-    assert selection.fallback is PracticeId.BREATH_AWARENESS
+# --- scoring -----------------------------------------------------------------
 
 
-def test_fallback_is_used_and_reported_when_the_primary_has_no_protocol(
-    catalog: KnowledgeCatalog,
+def test_scores_are_bounded_integers(
+    engine: RecommendationEngine, sampled_states: list[StateVector]
 ) -> None:
-    """Falling back is never silent: it adds a reason code."""
-    reduced = KnowledgeCatalog(
-        practices={
-            key: value for key, value in catalog.practices.items() if key != "body_awareness"
-        },
-        protocols_by_practice={
-            key: value
-            for key, value in catalog.protocols_by_practice.items()
-            if key != "body_awareness"
-        },
-        practices_schema_version=catalog.practices_schema_version,
-        protocols_schema_version=catalog.protocols_schema_version,
-    )
-    result = RecommendationEngine(reduced).recommend(make_check_in(goal="sleep", mental_activity=9))
-    assert result.practice_id == "breath_awareness"
-    assert ReasonCode.FALLBACK_PRACTICE_USED.value in result.reason_codes
+    for state in sampled_states:
+        for candidate in engine.evaluate(state).candidates:
+            assert isinstance(candidate.score, int)
+            assert SCORE_MIN <= candidate.score <= SCORE_MAX
 
 
-def test_missing_practice_without_fallback_is_an_error(catalog: KnowledgeCatalog) -> None:
-    reduced = KnowledgeCatalog(
-        practices={
-            key: value for key, value in catalog.practices.items() if key != "open_awareness"
-        },
-        protocols_by_practice={
-            key: value
-            for key, value in catalog.protocols_by_practice.items()
-            if key != "open_awareness"
-        },
-        practices_schema_version=catalog.practices_schema_version,
-        protocols_schema_version=catalog.protocols_schema_version,
-    )
-    with pytest.raises(KnowledgeValidationError):
-        RecommendationEngine(reduced).recommend(
-            make_check_in(goal="general", experience_level="experienced")
-        )
+def test_candidates_are_ordered_by_score_then_declaration(
+    engine: RecommendationEngine, sampled_states: list[StateVector]
+) -> None:
+    index = {practice: position for position, practice in enumerate(PRACTICE_ORDER)}
+    for state in sampled_states:
+        keys = [
+            (-candidate.score, index[candidate.practice_id])
+            for candidate in engine.evaluate(state).candidates
+        ]
+        assert keys == sorted(keys)
+
+
+def test_exclusions_are_recorded_with_a_reason(engine: RecommendationEngine) -> None:
+    state = StateVector.from_check_in(make_check_in(goal="sleep", sleepiness=9))
+    outcome = engine.evaluate(state)
+    excluded = {e.practice_id.value: e.reason for e in outcome.exclusions}
+    assert excluded["mindful_walking"] == "contraindicated"
+    assert excluded["open_awareness"] == "below_minimum_experience"
+
+
+def test_every_goal_declares_an_affinity_for_every_practice() -> None:
+    """A missing entry would score 0 silently instead of failing loudly."""
+    for goal in Goal:
+        assert set(BASE_AFFINITY[goal]) == set(PRACTICE_ORDER), goal
+
+
+def test_modifier_names_are_unique() -> None:
+    names = [modifier.name for modifier in MODIFIERS]
+    assert len(set(names)) == len(names)
+
+
+def test_every_modifier_is_reachable(sampled_states: list[StateVector]) -> None:
+    """A modifier no state can trigger is dead weight in the rule table."""
+    fired = {
+        modifier.name
+        for state in sampled_states
+        for modifier in MODIFIERS
+        if modifier.applies_to(state)
+    }
+    assert fired == {modifier.name for modifier in MODIFIERS}

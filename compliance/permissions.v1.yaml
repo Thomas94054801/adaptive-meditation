@@ -70,9 +70,14 @@ store_sensitive_capabilities:
     implemented: true
     isolated_behind_adapter: true
     adapter: SecureStorageProvider
+    backing_store: platform app-private preferences
+    encrypted_at_rest: false
     notes: >-
-      V1 stores only a local guest session identifier and local session history.
-      No credential and no health data are held.
+      Stores one value: a random UUIDv4 guest identifier. It is not a credential
+      and carries no health data, so app-private preferences are appropriate.
+      This is deliberately not described as keychain storage; a keychain-backed
+      implementation of the same interface is the upgrade path if anything
+      sensitive is ever stored here.
   text_to_speech:
     implemented: false
     isolated_behind_adapter: true
@@ -81,9 +86,23 @@ store_sensitive_capabilities:
 guest_usage:
   registration_required: false
   fake_identity_generated: false
+  identifier: random UUIDv4 generated on the client
+  identifier_sources_prohibited:
+    - hardware_fingerprint
+    - imei
+    - advertising_id
+    - idfa
+    - idfv
+    - mac_address
+  server_side_storage: true
+  self_service_deletion: "DELETE /v1/me/data"
+  self_service_export: "GET /v1/me/export"
   notes: >-
     Check-ins and sessions are created with no account. user_id is nullable in
-    the schema and is never populated in Program001.
+    the schema and is still never populated. Program002 added server-side guest
+    data, and with it real deletion and export: the guest row cascades to
+    check-ins, sessions, feedback, recommendation candidates and experiment
+    assignments.
 claims:
   medical_diagnosis: false
   medical_treatment: false

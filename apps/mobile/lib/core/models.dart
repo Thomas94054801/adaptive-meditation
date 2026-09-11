@@ -97,7 +97,9 @@ class Recommendation {
     required this.durationMinutes,
     required this.guidanceDensity,
     required this.reasonCodes,
-    required this.recommendationVersion,
+    required this.engineVersion,
+    required this.ruleSetVersion,
+    required this.protocolVersion,
   });
 
   factory Recommendation.fromJson(Map<String, dynamic> json) => Recommendation(
@@ -106,7 +108,14 @@ class Recommendation {
     durationMinutes: json['duration_minutes'] as int,
     guidanceDensity: (json['guidance_density'] as num).toDouble(),
     reasonCodes: (json['reason_codes'] as List<dynamic>).cast<String>(),
-    recommendationVersion: json['recommendation_version'] as String,
+    // v2 splits the single version into three. A v1 payload is still read:
+    // its recommendation_version becomes the rule set version.
+    engineVersion: json['engine_version'] as String? ?? '1',
+    ruleSetVersion:
+        json['rule_set_version'] as String? ??
+        json['recommendation_version'] as String? ??
+        '1',
+    protocolVersion: json['protocol_version'] as String? ?? '1',
   );
 
   final String practiceId;
@@ -114,7 +123,9 @@ class Recommendation {
   final int durationMinutes;
   final double guidanceDensity;
   final List<String> reasonCodes;
-  final String recommendationVersion;
+  final String engineVersion;
+  final String ruleSetVersion;
+  final String protocolVersion;
 }
 
 class SessionStage {
@@ -212,6 +223,11 @@ class SessionFeedback {
     required this.completed,
     this.beforeScore,
     this.notes,
+    this.stressAfter,
+    this.energyAfter,
+    this.mentalActivityAfter,
+    this.sleepinessAfter,
+    this.completionRatio,
   });
 
   final int afterScore;
@@ -220,11 +236,85 @@ class SessionFeedback {
   final int? beforeScore;
   final String? notes;
 
+  /// The full after-state, so the backend can compute the outcome measure that
+  /// matches the goal. Sent together or not at all: a half-filled snapshot
+  /// would give a measure for some goals and silently not for others.
+  final int? stressAfter;
+  final int? energyAfter;
+  final int? mentalActivityAfter;
+  final int? sleepinessAfter;
+  final double? completionRatio;
+
   Map<String, dynamic> toJson() => <String, dynamic>{
     'after_score': afterScore,
     'helpfulness': helpfulness,
     'completed': completed,
     if (beforeScore != null) 'before_score': beforeScore,
     if (notes != null && notes!.isNotEmpty) 'notes': notes,
+    if (stressAfter != null) 'stress_after': stressAfter,
+    if (energyAfter != null) 'energy_after': energyAfter,
+    if (mentalActivityAfter != null) 'mental_activity_after': mentalActivityAfter,
+    if (sleepinessAfter != null) 'sleepiness_after': sleepinessAfter,
+    if (completionRatio != null) 'completion_ratio': completionRatio,
   };
+}
+
+/// One row of the guest's server-side history.
+class SessionHistoryItem {
+  const SessionHistoryItem({
+    required this.id,
+    required this.status,
+    required this.createdAt,
+    required this.practiceId,
+    required this.publicTitle,
+    required this.durationMinutes,
+  });
+
+  factory SessionHistoryItem.fromJson(Map<String, dynamic> json) =>
+      SessionHistoryItem(
+        id: json['id'] as String,
+        status: json['status'] as String,
+        createdAt: DateTime.parse(json['created_at'] as String),
+        practiceId: json['practice_id'] as String,
+        publicTitle: json['public_title'] as String,
+        durationMinutes: json['duration_minutes'] as int,
+      );
+
+  final String id;
+  final String status;
+  final DateTime createdAt;
+  final String practiceId;
+  final String publicTitle;
+  final int durationMinutes;
+
+  bool get completed => status == 'completed';
+}
+
+class SessionHistoryPage {
+  const SessionHistoryPage({
+    required this.items,
+    required this.hasMore,
+    this.nextCursor,
+  });
+
+  factory SessionHistoryPage.fromJson(Map<String, dynamic> json) =>
+      SessionHistoryPage(
+        items: (json['items'] as List<dynamic>)
+            .map(
+              (dynamic e) =>
+                  SessionHistoryItem.fromJson(e as Map<String, dynamic>),
+            )
+            .toList(growable: false),
+        hasMore: json['has_more'] as bool,
+        nextCursor: json['next_cursor'] as String?,
+      );
+
+  final List<SessionHistoryItem> items;
+  final bool hasMore;
+  final String? nextCursor;
+
+  static const SessionHistoryPage empty = SessionHistoryPage(
+    items: <SessionHistoryItem>[],
+    hasMore: false,
+  );
 }

@@ -17,8 +17,21 @@ import yaml
 from app.domain.practice.language import assert_public_language
 from app.domain.practice.models import Practice, Protocol
 
+# Knowledge is versioned on disk. v1 is frozen: it is the comparator baseline
+# and the V1 replay fixture, and must never be edited.
+KNOWLEDGE_VERSIONS: tuple[int, ...] = (1, 2)
+DEFAULT_KNOWLEDGE_VERSION = 2
+
 PRACTICES_FILE = "practices.v1.yaml"
 PROTOCOLS_FILE = "protocols.v1.yaml"
+
+
+def practices_file(version: int) -> str:
+    return f"practices.v{version}.yaml"
+
+
+def protocols_file(version: int) -> str:
+    return f"protocols.v{version}.yaml"
 
 
 class KnowledgeValidationError(ValueError):
@@ -33,6 +46,7 @@ class KnowledgeCatalog:
     protocols_by_practice: dict[str, Protocol]
     practices_schema_version: int
     protocols_schema_version: int
+    knowledge_version: int = DEFAULT_KNOWLEDGE_VERSION
 
     def practice(self, practice_id: str) -> Practice:
         try:
@@ -65,7 +79,7 @@ def _load_yaml(path: Path) -> dict[str, Any]:
     return data
 
 
-def load_catalog(knowledge_dir: Path) -> KnowledgeCatalog:
+def load_catalog(knowledge_dir: Path, version: int = DEFAULT_KNOWLEDGE_VERSION) -> KnowledgeCatalog:
     """Load and cross-validate the knowledge files.
 
     Raises :class:`KnowledgeValidationError` if a protocol points at an unknown
@@ -73,8 +87,10 @@ def load_catalog(knowledge_dir: Path) -> KnowledgeCatalog:
     be rendered by the protocol's own stage bounds, or user-facing text breaks
     the public-language invariants.
     """
-    practices_raw = _load_yaml(knowledge_dir / PRACTICES_FILE)
-    protocols_raw = _load_yaml(knowledge_dir / PROTOCOLS_FILE)
+    if version not in KNOWLEDGE_VERSIONS:
+        raise KnowledgeValidationError(f"unknown knowledge version {version!r}")
+    practices_raw = _load_yaml(knowledge_dir / practices_file(version))
+    protocols_raw = _load_yaml(knowledge_dir / protocols_file(version))
 
     practices: dict[str, Practice] = {}
     for entry in practices_raw.get("practices", []):
@@ -116,11 +132,35 @@ def load_catalog(knowledge_dir: Path) -> KnowledgeCatalog:
     if missing:
         raise KnowledgeValidationError(f"practices without an executable protocol: {missing}")
 
+    for practice in practices.values():
+        protocol = protocols[practice.id]
+        low, high = practice.duration_range
+        if low > high:
+            raise KnowledgeValidationError(
+                f"practice {practice.id!r} declares an inverted duration_range"
+            )
+        outside = [d for d in protocol.duration_supported if not low <= d <= high]
+        if outside:
+            raise KnowledgeValidationError(
+                f"protocol {protocol.id!r} supports durations {outside} outside the "
+                f"practice's declared duration_range {list(practice.duration_range)}"
+            )
+        if practice.guidance_density_range != (0.0, 1.0):
+            p_low, p_high = practice.guidance_density_range
+            r_low, r_high = protocol.guidance_density_range
+            if r_low < p_low or r_high > p_high:
+                raise KnowledgeValidationError(
+                    f"protocol {protocol.id!r} density range "
+                    f"{list(protocol.guidance_density_range)} escapes the practice's "
+                    f"{list(practice.guidance_density_range)}"
+                )
+
     return KnowledgeCatalog(
         practices=practices,
         protocols_by_practice=protocols,
         practices_schema_version=int(practices_raw.get("schema_version", 0)),
         protocols_schema_version=int(protocols_raw.get("schema_version", 0)),
+        knowledge_version=version,
     )
 
 
@@ -141,7 +181,7 @@ def _validate_protocol_renderability(protocol: Protocol) -> None:
             )
 
 
-@lru_cache(maxsize=4)
-def get_catalog(knowledge_dir: Path) -> KnowledgeCatalog:
-    """Process-wide cached catalog. Bounded at four directories (app + tests)."""
-    return load_catalog(knowledge_dir)
+@lru_cache(maxsize=8)
+def get_catalog(knowledge_dir: Path, version: int = DEFAULT_KNOWLEDGE_VERSION) -> KnowledgeCatalog:
+    """Process-wide cached catalog. Bounded at eight (directory, version) pairs."""
+    return load_catalog(knowledge_dir, version)

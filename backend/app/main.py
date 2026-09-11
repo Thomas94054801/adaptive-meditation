@@ -15,6 +15,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
 from app.api.system import router as system_router
+from app.api.v1.guest_routes import router as guest_router
 from app.api.v1.routes import router as v1_router
 from app.domain.practice.catalog import get_catalog
 from app.domain.recommendation.engine import RecommendationEngine
@@ -56,6 +57,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     app.include_router(system_router)
     app.include_router(v1_router)
+    app.include_router(guest_router)
 
     @app.exception_handler(RequestValidationError)
     async def _validation_handler(request: Request, exc: RequestValidationError) -> JSONResponse:

@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime
-from typing import Annotated, Literal
+from typing import Annotated, Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -87,7 +87,12 @@ class SessionResponse(BaseModel):
 
 
 class SessionFeedbackRequest(BaseModel):
-    """Outcome feedback. No clinical meaning is inferred from these values."""
+    """Outcome feedback. No clinical meaning is inferred from these values.
+
+    v2 accepts the full after-state so every goal-specific outcome measure can
+    be computed. All four are optional: a client that sends only ``after_score``
+    still works, and its session simply has no derived outcome.
+    """
 
     model_config = ConfigDict(extra="forbid")
 
@@ -97,6 +102,71 @@ class SessionFeedbackRequest(BaseModel):
     before_score: Scale | None = None
     notes: Annotated[str, Field(max_length=NOTES_MAX_LENGTH)] | None = None
 
+    stress_after: Scale | None = None
+    energy_after: Scale | None = None
+    mental_activity_after: Scale | None = None
+    sleepiness_after: Scale | None = None
+    completion_ratio: Annotated[float, Field(ge=0.0, le=1.0)] | None = None
+
+
+class CandidateResponse(BaseModel):
+    """One scored candidate. Debug and offline evaluation only.
+
+    ``score`` is a bounded ordinal ranking aid, not a probability.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    practice_id: str
+    score: Annotated[int, Field(ge=0, le=100)]
+    reason_codes: list[str]
+
+
+class CandidateListResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    rule_set_version: str
+    candidates: list[CandidateResponse]
+    exclusions: list[dict[str, str]]
+
+
+class SessionSummary(BaseModel):
+    """One row of a guest's history."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    id: uuid.UUID
+    status: str
+    created_at: datetime
+    completed_at: datetime | None
+    practice_id: str
+    public_title: str
+    duration_minutes: int
+    rule_set_version: str | None
+    # product optimization metric only - never rendered to the user
+    outcome_score: int | None
+
+
+class SessionHistoryPage(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    items: list[SessionSummary]
+    next_cursor: str | None
+    has_more: bool
+
+
+class GuestExportResponse(BaseModel):
+    """Everything stored for one guest."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    guest_id: uuid.UUID
+    check_ins: list[dict[str, Any]]
+    recommendations: list[dict[str, Any]]
+    sessions: list[dict[str, Any]]
+    feedback: list[dict[str, Any]]
+    experiment_assignments: list[dict[str, Any]]
+
 
 class HealthResponse(BaseModel):
     model_config = ConfigDict(extra="forbid")
@@ -104,7 +174,9 @@ class HealthResponse(BaseModel):
     status: Literal["ok"]
     app_env: str
     api_version: str
-    rules_version: str
+    engine_version: str
+    rule_set_version: str
+    knowledge_version: int
     practices_loaded: int
     protocols_loaded: int
     ai_provider_configured: bool

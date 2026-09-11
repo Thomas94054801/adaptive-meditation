@@ -51,6 +51,10 @@ def test_required_paths_and_operations(committed_spec: dict[str, Any]) -> None:
         ("/v1/sessions", "post"): "createSession",
         ("/v1/sessions/{session_id}/start", "post"): "startSession",
         ("/v1/sessions/{session_id}/feedback", "post"): "submitSessionFeedback",
+        ("/v1/recommendations/candidates", "post"): "createRecommendationCandidates",
+        ("/v1/sessions/history", "get"): "listSessionHistory",
+        ("/v1/me/export", "get"): "exportGuestData",
+        ("/v1/me/data", "delete"): "deleteGuestData",
         ("/healthz", "get"): "healthz",
         ("/privacy", "get"): "privacyPolicy",
         ("/terms", "get"): "termsOfUse",
@@ -94,6 +98,31 @@ def test_check_in_schema_keeps_its_declared_bounds(committed_spec: dict[str, Any
     assert goals == {"stress", "overthinking", "focus", "sleep", "emotional_reset", "general"}
     levels = set(_enum_values(committed_spec, properties["experience_level"]))
     assert levels == {"beginner", "intermediate", "experienced"}
+
+
+def test_v2_version_fields_are_in_the_contract(committed_spec: dict[str, Any]) -> None:
+    schema = committed_spec["components"]["schemas"]["RecommendationResponse"]
+    for field in ("engine_version", "rule_set_version", "protocol_version", "state_fingerprint"):
+        assert field in schema["properties"], field
+    assert "recommendation_version" not in schema["properties"]
+
+
+def test_guest_routes_declare_their_identity_header(committed_spec: dict[str, Any]) -> None:
+    for path in ("/v1/sessions/history", "/v1/me/export"):
+        operation = committed_spec["paths"][path]["get"]
+        names = {p.get("name") for p in operation.get("parameters", [])}
+        assert "X-Guest-Id" in names, path
+
+
+def test_candidate_score_is_declared_as_a_bounded_integer(
+    committed_spec: dict[str, Any],
+) -> None:
+    """The contract must not let a score be read as a probability."""
+    schema = committed_spec["components"]["schemas"]["CandidateResponse"]
+    score = schema["properties"]["score"]
+    assert score["type"] == "integer"
+    assert score["minimum"] == 0
+    assert score["maximum"] == 100
 
 
 def test_recommendation_schema_requires_the_contract_fields(

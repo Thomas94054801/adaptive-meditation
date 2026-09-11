@@ -44,6 +44,9 @@ ELEVATED_STRESS = 6
 MODERATE_STRESS = 5
 HIGH_MENTAL_ACTIVITY = 7
 HIGH_SLEEPINESS = 7
+# v2: energy stops being a dead input (SDD_PROGRAM002 section 2.1).
+HIGH_ENERGY = 7
+LOW_ENERGY = 3
 
 
 class CheckIn(BaseModel):
@@ -113,6 +116,14 @@ class StateVector(BaseModel):
     @property
     def high_sleepiness(self) -> bool:
         return self.sleepiness >= HIGH_SLEEPINESS
+
+    @property
+    def high_energy(self) -> bool:
+        return self.energy >= HIGH_ENERGY
+
+    @property
+    def low_energy(self) -> bool:
+        return self.energy <= LOW_ENERGY
 
     def fingerprint(self) -> str:
         """Stable hash of the normalized input.

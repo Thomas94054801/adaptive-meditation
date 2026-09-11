@@ -10,6 +10,14 @@ v1:
       purpose: [account, authentication]
       deletable: true
       advertising_use: false
+  identity_guest:
+    guest_id:
+      collected: true
+      form: random UUIDv4 generated on device
+      device_derived: false
+      purpose: [session_history, data_deletion, data_export, experiment_assignment]
+      deletable: true
+      advertising_use: false
   wellness:
     check_in:
       collected: true
@@ -24,7 +32,39 @@ v1:
       advertising_use: false
     feedback:
       collected: true
+      fields:
+        - after_score
+        - helpfulness
+        - completed
+        - notes
+        - stress_after
+        - energy_after
+        - mental_activity_after
+        - sleepiness_after
+        - completion_ratio
       purpose: [outcome_measurement, personalization, quality_improvement]
+      deletable: true
+      advertising_use: false
+    outcome_evidence:
+      collected: true
+      derived_from: [check_in, feedback]
+      fields: [primary_measure, primary_delta, secondary_measure, secondary_delta, outcome_score]
+      purpose: [product_optimization]
+      clinical_use: false
+      diagnostic_use: false
+      shown_to_user: false
+      deletable: true
+      advertising_use: false
+      notes: >-
+        outcome_score is a product optimization metric only. It is not a
+        clinical, medical or diagnostic score, it is not validated, and it is
+        never displayed. Raw before and after values are retained so every
+        derived value stays recomputable.
+    experiment_assignment:
+      collected: true
+      fields: [experiment_id, variant, assignment_key, assigned_at]
+      purpose: [product_experimentation]
+      deterministic: true
       deletable: true
       advertising_use: false
   health:
@@ -49,6 +89,15 @@ v1:
       enabled: planned
       safety_router_required: true
       report_output_required: true
+  rights:
+    deletion:
+      self_service: true
+      endpoint: "DELETE /v1/me/data"
+      scope: all guest-owned rows, by database cascade
+    export:
+      self_service: true
+      endpoint: "GET /v1/me/export"
+      format: json
   commerce:
     apple_iap: planned
     google_play_billing: planned

@@ -51,7 +51,7 @@ backend/      FastAPI modular monolith, PostgreSQL, Alembic
 compliance/   machine-readable data and permission inventories
 docs/         program contract and SDD, plus implementation status
 infra/        OCI-sized Docker Compose stack and Caddy config
-knowledge/    practices.v1.yaml and protocols.v1.yaml
+knowledge/    versioned practice and protocol knowledge (v1 frozen, v2 current)
 ```
 
 ## Running the vertical slice
@@ -75,7 +75,18 @@ only recommendation path, which is the intended V1 behaviour.
 
 ## Status
 
-Program001 vertical slice implemented: check-in, state vector, deterministic
-recommendation, protocol, session and feedback, end to end through the API and
-the client. See [docs/PROGRAM001_STATUS.md](docs/PROGRAM001_STATUS.md) for the
-Definition-of-Done result and the evidence behind each item.
+**Program001 — closed.** The vertical slice runs end to end: check-in, state
+vector, deterministic recommendation, protocol, session and feedback, through
+both the API and the client. Merged to `main`, hosted CI green.
+See [docs/PROGRAM001_STATUS.md](docs/PROGRAM001_STATUS.md).
+
+**Program002 — Practice Intelligence & Outcome Evidence, in progress.** Seven
+executable practices, scored candidate selection with three independent version
+fields, goal-specific outcome evidence over raw before/after values,
+backend-persistent guest history with real deletion and export, deterministic
+experiment assignment, and an offline rule-set comparator over the full
+1,317,690-state space. Nothing learns autonomously and no model selects a
+practice: evidence informs an offline comparison, a human approves a versioned
+rule set, and the production path stays deterministic.
+See [docs/SDD_PROGRAM002.md](docs/SDD_PROGRAM002.md) and
+[docs/PROGRAM002_STATUS.md](docs/PROGRAM002_STATUS.md).

@@ -15,13 +15,16 @@ import 'session_timeline.dart';
 class SessionScreen extends StatefulWidget {
   const SessionScreen({
     required this.session,
-    required this.beforeScore,
+    required this.beforeState,
     super.key,
     this.autoStart = true,
   });
 
   final MeditationSession session;
-  final int beforeScore;
+
+  /// The check-in this session came from, kept so the feedback screen can ask
+  /// for the same four scales and the backend can compute a real before/after.
+  final CheckIn beforeState;
 
   /// Disabled in widget tests so no timer outlives the test.
   final bool autoStart;
@@ -76,12 +79,19 @@ class _SessionScreenState extends State<SessionScreen> {
     if (!mounted) {
       return;
     }
+    // How much of the planned session actually ran. Measured, not assumed:
+    // "completed" is the user's intent and this is what happened.
+    final int total = _timeline.totalSeconds;
+    final double ratio = total <= 0
+        ? 1
+        : (_elapsedSeconds / total).clamp(0.0, 1.0);
     await Navigator.of(context).pushReplacement<void, void>(
       MaterialPageRoute<void>(
         builder: (BuildContext context) => FeedbackScreen(
           session: widget.session,
-          beforeScore: widget.beforeScore,
+          beforeState: widget.beforeState,
           completed: completed,
+          completionRatio: ratio,
         ),
       ),
     );

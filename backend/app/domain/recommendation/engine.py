@@ -10,18 +10,25 @@ reason-code order.
 
 from __future__ import annotations
 
+from collections.abc import Mapping
+from typing import Any
+
 from pydantic import BaseModel, ConfigDict, Field
 
-from app.domain.practice.catalog import KnowledgeCatalog, KnowledgeValidationError
+from app.domain.practice.catalog import KnowledgeCatalog
 from app.domain.recommendation.rules import (
     ALLOWED_REASON_CODES,
-    RULES_VERSION,
-    PracticeId,
-    PracticeSelection,
-    ReasonCode,
     select_duration,
     select_guidance_density,
-    select_practice,
+)
+from app.domain.recommendation.rules_v2 import ALLOWED_REASON_CODES_V2
+from app.domain.recommendation.rulesets import RuleSet, V2RuleSet
+from app.domain.recommendation.scoring import RuleOutcome
+from app.domain.recommendation.versions import (
+    DEFAULT_PROTOCOL_VERSION,
+    ENGINE_VERSION,
+    LEGACY_ENGINE_VERSION,
+    RuleSetVersion,
 )
 from app.domain.state.models import CheckIn, StateVector
 
@@ -31,7 +38,12 @@ class RecommendationError(RuntimeError):
 
 
 class Recommendation(BaseModel):
-    """The deterministic engine output. This is the envelope AI may not change."""
+    """The deterministic engine output. This is the envelope AI may not change.
+
+    v2 splits Program001's single ``recommendation_version`` into three fields
+    that move independently, and records the input fingerprint so a stored
+    recommendation can be replayed without the original check-in.
+    """
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
@@ -39,32 +51,69 @@ class Recommendation(BaseModel):
     duration_minutes: int = Field(ge=1)
     guidance_density: float = Field(ge=0.0, le=1.0)
     reason_codes: tuple[str, ...]
-    recommendation_version: str = RULES_VERSION
+
+    engine_version: str = ENGINE_VERSION
+    rule_set_version: str = RuleSetVersion.V2.value
+    protocol_version: str = DEFAULT_PROTOCOL_VERSION
+    state_fingerprint: str = ""
+
+    @classmethod
+    def from_stored(cls, payload: Mapping[str, Any]) -> Recommendation:
+        """Read a persisted recommendation from any engine version.
+
+        A Program001 row carries only ``recommendation_version``. Rather than
+        migrating those rows - which would destroy the record of what was
+        actually served - the legacy field is interpreted here, once, at the
+        edge.
+        """
+        data = dict(payload)
+        legacy = data.pop("recommendation_version", None)
+        if "engine_version" not in data:
+            data["engine_version"] = LEGACY_ENGINE_VERSION
+            data["rule_set_version"] = str(legacy or RuleSetVersion.V1.value)
+            data.setdefault("protocol_version", LEGACY_ENGINE_VERSION)
+        data.setdefault("state_fingerprint", "")
+        return cls.model_validate(data)
 
 
 class RecommendationEngine:
-    """Stateless facade over the rules. Safe to share across requests."""
+    """Stateless facade over a rule set. Safe to share across requests."""
 
-    def __init__(self, catalog: KnowledgeCatalog) -> None:
+    def __init__(self, catalog: KnowledgeCatalog, rule_set: RuleSet | None = None) -> None:
         self._catalog = catalog
+        self._rule_set: RuleSet = rule_set or V2RuleSet()
 
     @property
     def catalog(self) -> KnowledgeCatalog:
         return self._catalog
 
+    @property
+    def rule_set(self) -> RuleSet:
+        return self._rule_set
+
     def recommend(self, check_in: CheckIn) -> Recommendation:
         return self.recommend_for_state(StateVector.from_check_in(check_in))
 
-    def recommend_for_state(self, state: StateVector) -> Recommendation:
-        selection = select_practice(state)
-        practice_id, codes = self._resolve_practice(selection)
+    def evaluate(self, state: StateVector) -> RuleOutcome:
+        """Full candidate list. For the offline evaluator and the debug path."""
+        return self._rule_set.evaluate(state, self._catalog)
 
-        allowed = ALLOWED_REASON_CODES[state.goal]
+    def recommend_for_state(self, state: StateVector) -> Recommendation:
+        outcome = self.evaluate(state)
+        winner = outcome.winner
+        practice_id = winner.practice_id
+        codes = winner.reason_codes
+
+        allowed = (
+            ALLOWED_REASON_CODES_V2[state.goal]
+            if outcome.rule_set_version == RuleSetVersion.V2.value
+            else ALLOWED_REASON_CODES[state.goal]
+        )
         unexpected = [code.value for code in codes if code not in allowed]
         if unexpected:  # pragma: no cover - guarded by the vocabulary test
             raise RecommendationError(
-                f"rule for goal {state.goal.value!r} emitted reason codes outside its "
-                f"vocabulary: {unexpected}"
+                f"rule set {outcome.rule_set_version} emitted reason codes outside the "
+                f"vocabulary for goal {state.goal.value!r}: {unexpected}"
             )
 
         protocol = self._catalog.protocol_for(practice_id.value)
@@ -86,25 +135,8 @@ class RecommendationEngine:
             duration_minutes=duration_minutes,
             guidance_density=guidance_density,
             reason_codes=tuple(code.value for code in codes),
-            recommendation_version=RULES_VERSION,
-        )
-
-    def _resolve_practice(
-        self, selection: PracticeSelection
-    ) -> tuple[PracticeId, tuple[ReasonCode, ...]]:
-        """Pick the primary practice, or the declared fallback if it is unreachable.
-
-        A rule may name a fallback for the case where the primary family has no
-        executable protocol in the catalog. Falling back is recorded in the
-        reason codes; it is never silent.
-        """
-        if self._catalog.has_executable_protocol(selection.primary.value):
-            return selection.primary, selection.reason_codes
-        if selection.fallback is not None and self._catalog.has_executable_protocol(
-            selection.fallback.value
-        ):
-            return selection.fallback, (*selection.reason_codes, ReasonCode.FALLBACK_PRACTICE_USED)
-        raise KnowledgeValidationError(
-            f"selected practice {selection.primary.value!r} has no executable protocol "
-            "and no usable fallback"
+            engine_version=ENGINE_VERSION,
+            rule_set_version=outcome.rule_set_version,
+            protocol_version=str(self._catalog.protocols_schema_version),
+            state_fingerprint=state.fingerprint(),
         )
