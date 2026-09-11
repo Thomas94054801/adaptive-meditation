@@ -42,6 +42,40 @@ Initial vertical slice:
 - Program007: Apple/Google Store Release
 - Program008: Optional Health Integrations
 
+## Repository
+
+```text
+api/          generated OpenAPI contract
+apps/mobile/  Flutter client
+backend/      FastAPI modular monolith, PostgreSQL, Alembic
+compliance/   machine-readable data and permission inventories
+docs/         program contract and SDD, plus implementation status
+infra/        OCI-sized Docker Compose stack and Caddy config
+knowledge/    practices.v1.yaml and protocols.v1.yaml
+```
+
+## Running the vertical slice
+
+```bash
+# backend
+cd backend && python3.12 -m venv .venv && ./.venv/bin/pip install -e ".[dev]"
+export DATABASE_URL="postgresql+psycopg://adaptive:adaptive@localhost:5432/adaptive"
+./.venv/bin/alembic upgrade head && ./.venv/bin/uvicorn app.main:app --reload
+
+# client
+cd apps/mobile && flutter pub get
+flutter run --dart-define=API_BASE_URL=http://localhost:8000
+
+# whole stack on the OCI host
+cd infra && cp .env.example .env && $EDITOR .env && docker compose up -d
+```
+
+No AI or TTS credential is required. Without one the deterministic engine is the
+only recommendation path, which is the intended V1 behaviour.
+
 ## Status
 
-Program001 bootstrap in progress.
+Program001 vertical slice implemented: check-in, state vector, deterministic
+recommendation, protocol, session and feedback, end to end through the API and
+the client. See [docs/PROGRAM001_STATUS.md](docs/PROGRAM001_STATUS.md) for the
+Definition-of-Done result and the evidence behind each item.

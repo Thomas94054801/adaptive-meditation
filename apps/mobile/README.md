@@ -1,21 +1,52 @@
 # Mobile App
 
-Target framework: Flutter.
+Flutter client for iOS and Android. Target stores: Apple App Store, Google Play.
 
-V1 target surfaces:
+## Layout
 
-- iOS App Store
-- Google Play
+```text
+lib/
+  main.dart
+  app/            app shell, theme, AppScope dependency holder
+  core/           config, wire models, API client, reason-code wording
+  features/
+    welcome/      guest entry, no registration wall
+    check_in/     goal, stress, energy, mental activity, sleepiness, time, experience
+    recommendation/  public practice title, duration, plain-English reason
+    session/      deterministic player (session_timeline.dart is pure logic)
+    feedback/     before/after and helpfulness
+    history/      local list of sessions from this run
+  platform/       AuthProvider, BillingProvider, TtsProvider, SecureStorageProvider,
+                  NotificationProvider, HealthProvider - interfaces with inert V1
+                  implementations and no call sites
+```
 
-Program001 screens:
+## The client does not choose the practice
 
-1. Welcome / guest entry
-2. Current-state check-in
-3. Recommended practice
-4. Session player
-5. Before/after feedback
-6. Session history
+The check-in goes to the backend and the recommendation comes back. The app does
+not send a recommendation when creating a session: the server re-derives it, and
+a disagreement is a 409. Internal source mappings are never displayed, and a
+reason code the client does not recognise is dropped rather than shown raw.
 
-Platform-sensitive capabilities must be behind adapters. HealthKit, Health Connect, camera, microphone and biometric inference are not requested in V1.
+## Permissions
 
-Target package identifiers will be finalized only after the public brand name is selected; do not bind the product to the developer's personal legal name.
+`INTERNET` is the only permission declared. Camera, microphone, location,
+contacts, photo library, notifications, HealthKit and Health Connect are absent
+from both manifests; `test/permissions_manifest_test.dart` asserts that against
+`compliance/permissions.v1.yaml`, so a plugin cannot add one unnoticed.
+
+Bundle identifiers are set per platform and are not derived from the publisher's
+legal name, so moving from an individual publisher to a company later does not
+require a rewrite.
+
+## Running it
+
+```bash
+flutter pub get
+flutter run --dart-define=API_BASE_URL=http://localhost:8000
+flutter analyze
+flutter test
+```
+
+No API key is compiled into the client; the backend needs no client credential
+in Program001.

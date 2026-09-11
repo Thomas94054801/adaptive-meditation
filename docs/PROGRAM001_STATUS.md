@@ -1,0 +1,92 @@
+# Program001 — implementation status
+
+Verified on 2026-09-11 against branch `program001/foundation`.
+
+Every result below was produced by running the stated command. Nothing is marked
+PASS on inspection alone.
+
+## Definition of Done (SDD section 19)
+
+| # | Item | Result | Evidence |
+|---|------|--------|----------|
+| 1 | Backend starts locally | PASS | `uvicorn app.main:app` serves; the same image starts in Docker and answers `/healthz` |
+| 2 | `/healthz` returns 200 | PASS | 200 with `{"status":"ok","practices_loaded":6,"protocols_loaded":6,"ai_provider_configured":false}`, with no database attached and no AI key |
+| 3 | Deterministic engine passes all required tests | PASS | SDD 15.1 cases 1–10 in `backend/tests/test_recommendation_engine.py`, plus invariants over 7,260 states |
+| 4 | Knowledge/protocol cross-validation passes | PASS | `backend/tests/test_knowledge_validation.py`, 15 tests, each mutating a copy of the real knowledge files |
+| 5 | check-in → recommendation → session → feedback through API tests | PASS | `backend/tests/test_api.py`, including the full slice for all six goals |
+| 6 | PostgreSQL migration exists | PASS | `backend/migrations/versions/0001_initial_program001_schema.py`; applied and downgraded against PostgreSQL 16.15 |
+| 7 | Docker image builds for the backend | PASS | `docker build -f backend/Dockerfile .` → `linux/arm64`, 72.9 MB |
+| 8 | Flutter project analyzes successfully | PASS | `flutter analyze` → no issues, Flutter 3.47.3 / Dart 3.13.3 |
+| 9 | No prohibited V1 mobile permission introduced | PASS | `INTERNET` only; `apps/mobile/test/permissions_manifest_test.dart` checks both manifests against `compliance/permissions.v1.yaml` |
+| 10 | CI workflow exists | PARTIAL | `.github/workflows/ci.yml` with four jobs; every step was run locally, but no GitHub-hosted run has executed yet |
+| 11 | No secret committed | PASS | The CI scanner run over 156 tracked files reports clean; `.env` shapes and key material are ignored |
+| 12 | Documentation synchronized with implementation | PASS | This file, the three READMEs, and a generated `api/openapi.v1.yaml` that CI fails on if stale |
+
+Overall: **PARTIAL** until the CI workflow has completed one hosted run.
+
+## Verification commands and results
+
+Backend, from `backend/`:
+
+| Command | Result |
+|---------|--------|
+| `ruff check .` | All checks passed |
+| `ruff format --check .` | 48 files already formatted |
+| `mypy` | Success: no issues found in 34 source files |
+| `TEST_DATABASE_URL=postgresql+psycopg://…/adaptive_test pytest` | 164 passed |
+| `pytest` (SQLite fallback) | 163 passed, 1 skipped (a PostgreSQL-only JSONB assertion) |
+| `python scripts/export_openapi.py --check` | matches the implementation |
+| `alembic upgrade head` / `alembic downgrade base` | applied and reversed on PostgreSQL 16.15 |
+
+Client, from `apps/mobile/`:
+
+| Command | Result |
+|---------|--------|
+| `flutter analyze` | No issues found |
+| `flutter test` | 41 passed |
+
+Image, from the repository root:
+
+| Command | Result |
+|---------|--------|
+| `docker build -f backend/Dockerfile -t adaptive-meditation-api:program001 .` | succeeded, `arm64/linux`, 72.9 MB |
+| container `/healthz` with no database and no AI key | 200 |
+| container `/v1/recommendations` with no database and no AI key | 200, `body_awareness` |
+| `docker exec … id` | `uid=999(app)` — non-root |
+| `docker stats` | 147.5 MiB against the 768 MB ceiling |
+
+## The required verification case
+
+`goal=overthinking, mental_activity=9, stress=8` returns, through the domain
+engine, the HTTP API and the container:
+
+```json
+{
+  "practice_id": "body_awareness",
+  "duration_minutes": 10,
+  "guidance_density": 0.7,
+  "reason_codes": ["goal_overthinking", "high_mental_activity", "high_stress"],
+  "recommendation_version": "1"
+}
+```
+
+## Known gaps
+
+1. **CI has not run on GitHub.** Every step was executed locally with the same
+   commands, but a hosted run is the only thing that proves the workflow file
+   itself is correct.
+2. **`kindness` is declared but unreachable.** It has a validated executable
+   protocol, and no V1 rule selects it. This is the SDD's rule set, not a defect;
+   `test_reachable_practice_set_is_exactly_as_documented` pins the reachable set
+   so the gap cannot be forgotten. Program002 is where it earns a rule.
+3. **`energy` is collected and unused.** No V1 rule reads it, and a test asserts
+   that the outcome is invariant to it, so the field is honest about being
+   future input rather than silently ignored.
+4. **Session history is in-memory only.** It holds the current run of the app,
+   is capped at 50 entries, and the screen says so rather than implying
+   durability that does not exist.
+5. **No accounts, so no deletion endpoint.** `/delete-account` explains what
+   guest data is instead of claiming a capability the service does not have.
+6. **No OCI deployment has been performed.** The stack is sized and buildable
+   for the target, but nothing has been deployed and no OCI credential is
+   configured in this repository.

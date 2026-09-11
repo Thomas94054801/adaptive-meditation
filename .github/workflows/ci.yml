@@ -1,0 +1,224 @@
+name: CI
+
+# No deployment step. OCI credentials are not configured for this repository,
+# and Program001 does not add a deploy that cannot be verified here.
+on:
+  push:
+    branches: ["main", "program001/**"]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  backend:
+    name: Backend (lint, types, tests)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    services:
+      postgres:
+        # The production dialect. The suite can fall back to SQLite locally,
+        # but CI always runs against PostgreSQL.
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: adaptive_test
+          POSTGRES_USER: adaptive
+          POSTGRES_PASSWORD: adaptive
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U adaptive -d adaptive_test"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      TEST_DATABASE_URL: postgresql+psycopg://adaptive:adaptive@localhost:5432/adaptive_test
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: backend/pyproject.toml
+
+      - name: Install dependencies
+        working-directory: backend
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e ".[dev]"
+
+      - name: Lint
+        working-directory: backend
+        run: |
+          ruff check .
+          ruff format --check .
+
+      - name: Type check
+        working-directory: backend
+        run: mypy
+
+      - name: Validate knowledge and compliance YAML
+        working-directory: backend
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          import yaml
+
+          from app.domain.practice.catalog import load_catalog
+
+          catalog = load_catalog(Path("../knowledge"))
+          print(f"knowledge ok: {len(catalog.practices)} practices, "
+                f"{len(catalog.protocols_by_practice)} protocols")
+
+          for path in sorted(Path("../compliance").glob("*.yaml")):
+              with path.open(encoding="utf-8") as handle:
+                  yaml.safe_load(handle)
+              print(f"compliance ok: {path.name}")
+          PY
+
+      - name: Validate the OpenAPI document
+        working-directory: backend
+        run: |
+          python scripts/export_openapi.py --check
+          python - <<'PY'
+          from pathlib import Path
+
+          import yaml
+          from openapi_spec_validator import validate
+
+          document = yaml.safe_load(
+              Path("../api/openapi.v1.yaml").read_text(encoding="utf-8")
+          )
+          validate(document)
+          print(f"openapi ok: {len(document['paths'])} paths")
+          PY
+
+      - name: Run the migration against PostgreSQL
+        working-directory: backend
+        env:
+          DATABASE_URL: ${{ env.TEST_DATABASE_URL }}
+        run: |
+          alembic upgrade head
+          alembic downgrade base
+
+      - name: Tests
+        working-directory: backend
+        run: pytest -v
+
+  docker:
+    name: Backend image (linux/arm64)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-qemu-action@v3
+        with:
+          platforms: arm64
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Build for the OCI Ampere A1 target
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: backend/Dockerfile
+          platforms: linux/arm64
+          push: false
+          load: false
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  mobile:
+    name: Flutter (analyze, tests)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: apps/mobile
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - run: flutter --version
+
+      - run: flutter pub get
+
+      - run: flutter analyze
+
+      - run: flutter test
+
+  secrets:
+    name: No committed credential
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Scan the tracked tree for credential shapes
+        run: |
+          python3 - <<'PY'
+          import re
+          import subprocess
+          import sys
+
+          # Filename shapes that should never be tracked.
+          forbidden_names = re.compile(
+              r"(^|/)(\.env(\.[^/]*)?|.*\.(pem|p8|p12|keystore|jks)|"
+              r".*service-account.*\.json)$"
+          )
+          # Value shapes. Deliberately narrow: a broad scanner that fires on the
+          # word "password" trains people to ignore it.
+          forbidden_values = [
+              ("AWS access key id", re.compile(r"AKIA[0-9A-Z]{16}")),
+              ("Google API key", re.compile(r"AIza[0-9A-Za-z_\-]{35}")),
+              ("OpenAI-style key", re.compile(r"\bsk-[A-Za-z0-9]{32,}")),
+              ("Anthropic-style key", re.compile(r"\bsk-ant-[A-Za-z0-9_\-]{20,}")),
+              ("Slack token", re.compile(r"xox[baprs]-[A-Za-z0-9\-]{10,}")),
+              ("private key block", re.compile(r"-----BEGIN [A-Z ]*PRIVATE KEY-----")),
+              ("GitHub token", re.compile(r"\bgh[pousr]_[A-Za-z0-9]{36,}")),
+          ]
+
+          tracked = subprocess.run(
+              ["git", "ls-files", "-z"], capture_output=True, check=True
+          ).stdout.decode().split("\0")
+
+          failures = []
+          for path in filter(None, tracked):
+              if path == ".github/workflows/ci.yml":
+                  continue  # this scanner's own patterns
+              if forbidden_names.search(path) and not path.endswith(".env.example"):
+                  failures.append(f"{path}: forbidden filename")
+                  continue
+              try:
+                  with open(path, encoding="utf-8") as handle:
+                      content = handle.read()
+              except (UnicodeDecodeError, FileNotFoundError):
+                  continue
+              for label, pattern in forbidden_values:
+                  if pattern.search(content):
+                      failures.append(f"{path}: {label}")
+
+          if failures:
+              print("committed credential material found:")
+              for failure in failures:
+                  print(f"  {failure}")
+              sys.exit(1)
+          print(f"scanned {len(list(filter(None, tracked)))} tracked files; clean")
+          PY

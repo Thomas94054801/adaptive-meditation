@@ -118,3 +118,19 @@ Program001 is complete when:
 6. Compliance inventory declares V1 data and permissions.
 7. iOS/Android store-sensitive capabilities are isolated behind adapters or explicitly deferred.
 8. CI design includes backend tests, schema validation and Flutter checks.
+
+## Implementation
+
+The acceptance criteria above are implemented on `program001/foundation`.
+Per-item results, the exact verification commands, and the known gaps are in
+[PROGRAM001_STATUS.md](PROGRAM001_STATUS.md).
+
+Two points where the implementation is narrower than this document:
+
+- The practice families list here includes Mindful Walking. V1 ships the six
+  families in `knowledge/practices.v1.yaml` and `knowledge/protocols.v1.yaml`;
+  the SDD's initial practice IDs, which are authoritative for this round, do not
+  include it.
+- `kindness` has an executable protocol but no rule selects it yet. This is the
+  SDD's rule set as written, and the reachable set is pinned by a test so it
+  stays visible.
