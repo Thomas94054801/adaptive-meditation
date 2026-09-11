@@ -17,6 +17,11 @@ merged to `main`, which is an operator decision, not an agent one.
 | Backend image (linux/arm64) | success |
 | Flutter (analyze, tests) | success |
 | No committed credential | success |
+| Later run at branch tip | [34613545251](https://github.com/Thomas94054801/adaptive-meditation/actions/runs/34613545251) at `3f2826fa`, all four jobs success |
+
+As in Program001, the commit that records this disposition is documentation-only
+and changes no executable source; the SHAs named above are the ones the hosted
+runs measured.
 
 Every result below was produced by running the stated command. Nothing is marked
 PASS on inspection alone, and no local result is reported as a hosted or OCI
