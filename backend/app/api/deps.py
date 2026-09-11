@@ -6,10 +6,11 @@ immutable; the database session is per request and always closed.
 
 from __future__ import annotations
 
+import uuid
 from collections.abc import Iterator
 from typing import Annotated
 
-from fastapi import Depends, Request
+from fastapi import Depends, Header, HTTPException, Request, status
 from sqlalchemy.orm import Session as OrmSession
 
 from app.domain.practice.catalog import KnowledgeCatalog
@@ -41,3 +42,49 @@ SettingsDep = Annotated[Settings, Depends(get_settings)]
 EngineDep = Annotated[RecommendationEngine, Depends(get_engine)]
 CatalogDep = Annotated[KnowledgeCatalog, Depends(get_catalog)]
 DbSessionDep = Annotated[OrmSession, Depends(get_db_session)]
+
+
+GUEST_HEADER = "X-Guest-Id"
+
+
+def optional_guest_id(
+    x_guest_id: Annotated[str | None, Header(alias=GUEST_HEADER)] = None,
+) -> uuid.UUID | None:
+    """The caller's guest identity, when it sent one.
+
+    Guest-first means optional: a caller with no identity still gets a
+    recommendation and a session, it just has no history to come back to.
+    A malformed value is a 422 rather than a silently ignored header, because
+    silently dropping it would strand that guest's data under an id nobody holds.
+    """
+    if x_guest_id is None:
+        return None
+    try:
+        return uuid.UUID(x_guest_id)
+    except ValueError:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail={
+                "code": "invalid_guest_id",
+                "message": f"{GUEST_HEADER} must be a UUID.",
+            },
+        ) from None
+
+
+def required_guest_id(
+    guest_id: Annotated[uuid.UUID | None, Depends(optional_guest_id)],
+) -> uuid.UUID:
+    """For the routes that act on a specific guest's data."""
+    if guest_id is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail={
+                "code": "guest_id_required",
+                "message": f"This endpoint requires a {GUEST_HEADER} header.",
+            },
+        )
+    return guest_id
+
+
+OptionalGuestDep = Annotated[uuid.UUID | None, Depends(optional_guest_id)]
+RequiredGuestDep = Annotated[uuid.UUID, Depends(required_guest_id)]

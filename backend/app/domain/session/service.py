@@ -9,11 +9,15 @@ from __future__ import annotations
 from app.domain.practice.catalog import KnowledgeCatalog
 from app.domain.recommendation.engine import Recommendation, RecommendationEngine
 from app.domain.session.planner import SessionPlan, render_plan
-from app.domain.state.models import CheckIn
+from app.domain.state.models import CheckIn, StateVector
 
 
 def build_plan(
-    catalog: KnowledgeCatalog, recommendation: Recommendation, *, title_from_practice: bool = True
+    catalog: KnowledgeCatalog,
+    recommendation: Recommendation,
+    *,
+    title_from_practice: bool = True,
+    state: StateVector | None = None,
 ) -> SessionPlan:
     protocol = catalog.protocol_for(recommendation.practice_id)
     title = None
@@ -24,6 +28,7 @@ def build_plan(
         duration_minutes=recommendation.duration_minutes,
         guidance_density=recommendation.guidance_density,
         practice_public_title=title,
+        state=state,
     )
 
 
@@ -31,4 +36,5 @@ def recommend_and_plan(
     engine: RecommendationEngine, check_in: CheckIn
 ) -> tuple[Recommendation, SessionPlan]:
     recommendation = engine.recommend(check_in)
-    return recommendation, build_plan(engine.catalog, recommendation)
+    state = StateVector.from_check_in(check_in)
+    return recommendation, build_plan(engine.catalog, recommendation, state=state)
