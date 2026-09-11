@@ -4,7 +4,10 @@ name: CI
 # and Program001 does not add a deploy that cannot be verified here.
 on:
   push:
-    branches: ["main", "program001/**"]
+    # Every program branch, not an enumerated list: Program002 pushed to a
+    # branch this workflow did not watch and ran nothing at all, which looks
+    # exactly like a passing build until you go looking for the run.
+    branches: ["main", "program*/**"]
   pull_request:
   workflow_dispatch:
 
