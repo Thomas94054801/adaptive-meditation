@@ -1,0 +1,266 @@
+# Executable practice protocols, one per practice family in practices.v1.yaml.
+#
+# Contract (docs/SDD_PROGRAM001.md section 6):
+#   - every protocol renders each duration it declares in duration_supported;
+#   - stage minimums must fit the shortest declared duration and stage maximums
+#     must reach the longest one (enforced by the catalog loader);
+#   - prompt templates carry no therapeutic, diagnostic or sectarian wording
+#     (enforced by app/domain/practice/language.py);
+#   - ${duration_minutes} and ${stage_minutes} are the only placeholders.
+schema_version: 1
+protocols:
+  - id: breath_awareness_v1
+    version: 1
+    practice_id: breath_awareness
+    public_title: Breath Awareness
+    duration_supported: [3, 5, 10, 15, 20]
+    guidance_density_range: [0.30, 0.75]
+    stages:
+      - id: arrive
+        intent: establish_posture
+        min_seconds: 20
+        max_seconds: 120
+        prompt_template: >-
+          Settle into a position you can hold for ${duration_minutes} minutes.
+          Let your shoulders drop and your hands rest.
+        silence_after_seconds: 5
+      - id: contact
+        intent: notice_natural_breath
+        min_seconds: 40
+        max_seconds: 360
+        prompt_template: >-
+          Find where the breath is easiest to feel - the nose, the chest or the
+          belly. Stay with that one place. Let the breath move at its own pace.
+        silence_after_seconds: 15
+      - id: stabilize
+        intent: return_without_force
+        min_seconds: 80
+        max_seconds: 600
+        prompt_template: >-
+          When attention wanders, notice where it went and come back to the same
+          place. Coming back is the practice, not a mistake.
+        silence_after_seconds: 30
+      - id: close
+        intent: transition_out
+        min_seconds: 30
+        max_seconds: 180
+        prompt_template: >-
+          Widen your attention to the whole body and the sounds around you.
+          Take one slower breath before you open your eyes.
+        silence_after_seconds: 10
+
+  - id: body_awareness_v1
+    version: 1
+    practice_id: body_awareness
+    public_title: Body Awareness
+    duration_supported: [3, 5, 10, 15, 20]
+    guidance_density_range: [0.30, 0.75]
+    stages:
+      - id: arrive
+        intent: establish_contact
+        min_seconds: 20
+        max_seconds: 120
+        prompt_template: >-
+          For the next ${duration_minutes} minutes, let attention come down out
+          of the head. Feel the points where your body meets the floor or chair.
+        silence_after_seconds: 5
+      - id: settle
+        intent: release_obvious_holding
+        min_seconds: 30
+        max_seconds: 180
+        prompt_template: >-
+          Scan the jaw, the shoulders and the hands. Where you find holding,
+          let it soften by as much as it wants to.
+        silence_after_seconds: 10
+      - id: sweep
+        intent: move_attention_through_body
+        min_seconds: 60
+        max_seconds: 480
+        prompt_template: >-
+          Move attention slowly from the feet upward. Feel each area directly -
+          warmth, weight, pressure, movement - rather than picturing it.
+        silence_after_seconds: 25
+      - id: rest
+        intent: whole_body_sense
+        min_seconds: 30
+        max_seconds: 360
+        prompt_template: >-
+          Let the whole body be felt at once, as one sensation. Nothing to fix
+          and nowhere to get to.
+        silence_after_seconds: 20
+      - id: close
+        intent: transition_out
+        min_seconds: 30
+        max_seconds: 180
+        prompt_template: >-
+          Notice how the body feels now compared with when you started.
+          Move your fingers before you finish.
+        silence_after_seconds: 10
+
+  - id: feeling_tone_v1
+    version: 1
+    practice_id: feeling_tone
+    public_title: Feeling Tone
+    duration_supported: [3, 5, 10, 15, 20]
+    guidance_density_range: [0.30, 0.75]
+    stages:
+      - id: arrive
+        intent: establish_posture
+        min_seconds: 20
+        max_seconds: 120
+        prompt_template: >-
+          Take ${duration_minutes} minutes here. Sit in a way that is alert
+          and comfortable, and let the breath settle on its own.
+        silence_after_seconds: 5
+      - id: notice_tone
+        intent: recognize_pleasant_unpleasant_neutral
+        min_seconds: 50
+        max_seconds: 420
+        prompt_template: >-
+          Whatever you notice, check its tone: pleasant, unpleasant or neither.
+          One word is enough. You are naming the flavour, not the story.
+        silence_after_seconds: 20
+      - id: allow
+        intent: stay_without_reacting
+        min_seconds: 70
+        max_seconds: 540
+        prompt_template: >-
+          Stay one breath longer with whatever is here before moving away from
+          it or reaching for more of it. Notice the pull itself.
+        silence_after_seconds: 25
+      - id: close
+        intent: transition_out
+        min_seconds: 30
+        max_seconds: 180
+        prompt_template: >-
+          Let the naming drop away. Sit with the whole of it for a few breaths,
+          then finish.
+        silence_after_seconds: 10
+
+  - id: thought_observation_v1
+    version: 1
+    practice_id: thought_observation
+    public_title: Thought Observation
+    duration_supported: [3, 5, 10, 15, 20]
+    guidance_density_range: [0.30, 0.75]
+    stages:
+      - id: arrive
+        intent: establish_posture
+        min_seconds: 20
+        max_seconds: 120
+        prompt_template: >-
+          Settle for ${duration_minutes} minutes. Let the body be still and
+          let the breath find its own rhythm.
+        silence_after_seconds: 5
+      - id: notice_thinking
+        intent: see_thought_as_event
+        min_seconds: 50
+        max_seconds: 420
+        prompt_template: >-
+          Watch for the next thought to arrive. See it as an event that appears
+          and passes, the way a sound appears and passes.
+        silence_after_seconds: 20
+      - id: release
+        intent: reduce_identification
+        min_seconds: 70
+        max_seconds: 540
+        prompt_template: >-
+          You do not have to follow the thought or push it away. Let it be
+          there and let it go on its own. Come back to the breath between them.
+        silence_after_seconds: 25
+      - id: close
+        intent: transition_out
+        min_seconds: 30
+        max_seconds: 180
+        prompt_template: >-
+          Let the watching relax. Feel the body and the room again before
+          you finish.
+        silence_after_seconds: 10
+
+  - id: kindness_v1
+    version: 1
+    practice_id: kindness
+    public_title: Kindness Practice
+    duration_supported: [3, 5, 10, 15, 20]
+    guidance_density_range: [0.30, 0.75]
+    stages:
+      - id: arrive
+        intent: establish_posture
+        min_seconds: 20
+        max_seconds: 120
+        prompt_template: >-
+          Take ${duration_minutes} minutes. Let the face and shoulders soften
+          and rest a hand somewhere comfortable if you like.
+        silence_after_seconds: 5
+      - id: toward_self
+        intent: offer_goodwill_to_self
+        min_seconds: 40
+        max_seconds: 360
+        prompt_template: >-
+          Offer yourself a simple line, in your own words: may I be at ease.
+          Say it slowly and notice how it lands, even if nothing shifts.
+        silence_after_seconds: 15
+      - id: toward_another
+        intent: offer_goodwill_to_another
+        min_seconds: 50
+        max_seconds: 420
+        prompt_template: >-
+          Bring to mind someone straightforward to care about, and offer them
+          the same line. Keep it simple and unhurried.
+        silence_after_seconds: 20
+      - id: widen
+        intent: extend_goodwill
+        min_seconds: 30
+        max_seconds: 300
+        prompt_template: >-
+          Let the wish widen to people you do not know well - anyone nearby,
+          anyone having a hard day.
+        silence_after_seconds: 15
+      - id: close
+        intent: transition_out
+        min_seconds: 30
+        max_seconds: 180
+        prompt_template: >-
+          Let the words stop and stay with whatever warmth is left, however
+          small, then finish.
+        silence_after_seconds: 10
+
+  - id: open_awareness_v1
+    version: 1
+    practice_id: open_awareness
+    public_title: Open Awareness
+    duration_supported: [3, 5, 10, 15, 20]
+    guidance_density_range: [0.20, 0.75]
+    stages:
+      - id: arrive
+        intent: establish_posture
+        min_seconds: 20
+        max_seconds: 120
+        prompt_template: >-
+          Sit upright for ${duration_minutes} minutes. Let the eyes be soft,
+          open or closed.
+        silence_after_seconds: 5
+      - id: open_field
+        intent: include_whole_field
+        min_seconds: 50
+        max_seconds: 480
+        prompt_template: >-
+          Instead of choosing one object, let attention stay wide. Sounds,
+          sensations and thoughts can come and go without being followed.
+        silence_after_seconds: 25
+      - id: rest_open
+        intent: rest_without_grasping
+        min_seconds: 70
+        max_seconds: 600
+        prompt_template: >-
+          Notice how experience changes by itself. Let it. Nothing here needs
+          to be held on to or removed.
+        silence_after_seconds: 35
+      - id: close
+        intent: transition_out
+        min_seconds: 30
+        max_seconds: 180
+        prompt_template: >-
+          Narrow gently back to the breath and the body for the last few
+          moments, then finish.
+        silence_after_seconds: 10
