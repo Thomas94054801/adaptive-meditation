@@ -40,6 +40,26 @@ def _scale_constraints(prefix: str, *fields: str) -> tuple[sa.CheckConstraint, .
     )
 
 
+class GuestProfile(Base):
+    """A guest identity.
+
+    The id is a client-generated UUIDv4 and nothing else: no hardware
+    fingerprint, no IMEI, no advertising identifier, no email. It exists so a
+    guest can see their own history and delete it, which is the only reason
+    server-side guest data is kept at all.
+    """
+
+    __tablename__ = "guest_profiles"
+
+    id: Mapped[uuid.UUID] = mapped_column(sa.Uuid, primary_key=True)
+    created_at: Mapped[datetime] = mapped_column(
+        sa.DateTime(timezone=True), nullable=False, server_default=sa.func.current_timestamp()
+    )
+    last_seen_at: Mapped[datetime] = mapped_column(
+        sa.DateTime(timezone=True), nullable=False, server_default=sa.func.current_timestamp()
+    )
+
+
 class CheckIn(Base):
     __tablename__ = "check_ins"
     __table_args__ = (
@@ -51,6 +71,10 @@ class CheckIn(Base):
 
     id: Mapped[uuid.UUID] = mapped_column(sa.Uuid, primary_key=True, default=uuid.uuid4)
     user_id: Mapped[uuid.UUID | None] = mapped_column(sa.Uuid, nullable=True, index=True)
+    # v2: guest ownership, so a guest can list and delete their own data.
+    guest_id: Mapped[uuid.UUID | None] = mapped_column(
+        sa.ForeignKey("guest_profiles.id", ondelete="CASCADE"), nullable=True, index=True
+    )
     goal: Mapped[str] = mapped_column(sa.String(32), nullable=False)
     stress: Mapped[int] = mapped_column(sa.SmallInteger, nullable=False)
     energy: Mapped[int] = mapped_column(sa.SmallInteger, nullable=False)
@@ -76,12 +100,21 @@ class Session(Base):
 
     id: Mapped[uuid.UUID] = mapped_column(sa.Uuid, primary_key=True, default=uuid.uuid4)
     user_id: Mapped[uuid.UUID | None] = mapped_column(sa.Uuid, nullable=True, index=True)
+    guest_id: Mapped[uuid.UUID | None] = mapped_column(
+        sa.ForeignKey("guest_profiles.id", ondelete="CASCADE"), nullable=True, index=True
+    )
     check_in_id: Mapped[uuid.UUID] = mapped_column(
         sa.ForeignKey("check_ins.id", ondelete="CASCADE"), nullable=False, index=True
     )
     recommendation: Mapped[dict[str, object]] = mapped_column(JSONType, nullable=False)
     protocol_id: Mapped[str] = mapped_column(sa.String(64), nullable=False)
     protocol_version: Mapped[int] = mapped_column(sa.SmallInteger, nullable=False)
+
+    # v2 recommendation provenance, promoted out of the JSON blob so it can be
+    # queried and compared without parsing every row.
+    engine_version: Mapped[str | None] = mapped_column(sa.String(8), nullable=True)
+    rule_set_version: Mapped[str | None] = mapped_column(sa.String(8), nullable=True, index=True)
+    state_fingerprint: Mapped[str | None] = mapped_column(sa.String(64), nullable=True, index=True)
     plan: Mapped[dict[str, object]] = mapped_column(JSONType, nullable=False)
     status: Mapped[str] = mapped_column(sa.String(16), nullable=False, default="created")
     created_at: Mapped[datetime] = mapped_column(
@@ -94,12 +127,27 @@ class Session(Base):
     feedback: Mapped[SessionFeedback | None] = relationship(
         back_populates="session", uselist=False, cascade="all, delete-orphan"
     )
+    candidates: Mapped[list[RecommendationCandidate]] = relationship(
+        back_populates="session", cascade="all, delete-orphan"
+    )
 
 
 class SessionFeedback(Base):
     __tablename__ = "session_feedback"
     __table_args__ = (
-        *_scale_constraints("ck_session_feedback", "before_score", "after_score"),
+        *_scale_constraints(
+            "ck_session_feedback",
+            "before_score",
+            "after_score",
+            "stress_after",
+            "energy_after",
+            "mental_activity_after",
+            "sleepiness_after",
+        ),
+        sa.CheckConstraint(
+            "completion_ratio IS NULL OR (completion_ratio >= 0 AND completion_ratio <= 1)",
+            name="ck_session_feedback_completion_ratio",
+        ),
         sa.CheckConstraint(
             "helpfulness >= 1 AND helpfulness <= 5", name="ck_session_feedback_helpfulness"
         ),
@@ -118,4 +166,66 @@ class SessionFeedback(Base):
         sa.DateTime(timezone=True), nullable=False, server_default=sa.func.current_timestamp()
     )
 
+    # v2: the full after-state, so every goal-specific outcome measure can be
+    # computed. Nullable because Program001 rows have only after_score.
+    stress_after: Mapped[int | None] = mapped_column(sa.SmallInteger, nullable=True)
+    energy_after: Mapped[int | None] = mapped_column(sa.SmallInteger, nullable=True)
+    mental_activity_after: Mapped[int | None] = mapped_column(sa.SmallInteger, nullable=True)
+    sleepiness_after: Mapped[int | None] = mapped_column(sa.SmallInteger, nullable=True)
+    completion_ratio: Mapped[float | None] = mapped_column(sa.Float, nullable=True)
+
+    # Derived outcome evidence. Recomputable from the raw values above, which
+    # are never overwritten; stored so the evaluator does not recompute per row.
+    primary_measure: Mapped[str | None] = mapped_column(sa.String(32), nullable=True)
+    primary_delta: Mapped[int | None] = mapped_column(sa.SmallInteger, nullable=True)
+    secondary_measure: Mapped[str | None] = mapped_column(sa.String(32), nullable=True)
+    secondary_delta: Mapped[int | None] = mapped_column(sa.SmallInteger, nullable=True)
+    # product optimization metric only - not clinical, not diagnostic
+    outcome_score: Mapped[int | None] = mapped_column(sa.SmallInteger, nullable=True)
+
     session: Mapped[Session] = relationship(back_populates="feedback")
+
+
+class RecommendationCandidate(Base):
+    """One scored candidate from the rule set, kept for offline evaluation.
+
+    Memory/storage: bounded at one row per practice per session - seven in v2 -
+    so the table grows linearly with sessions, not combinatorially.
+    """
+
+    __tablename__ = "recommendation_candidates"
+    __table_args__ = (
+        sa.CheckConstraint("score >= 0 AND score <= 100", name="ck_candidates_score"),
+        sa.UniqueConstraint("session_id", "practice_id", name="uq_candidates_session_practice"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(sa.Uuid, primary_key=True, default=uuid.uuid4)
+    session_id: Mapped[uuid.UUID] = mapped_column(
+        sa.ForeignKey("sessions.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    practice_id: Mapped[str] = mapped_column(sa.String(32), nullable=False)
+    rank: Mapped[int] = mapped_column(sa.SmallInteger, nullable=False)
+    score: Mapped[int] = mapped_column(sa.SmallInteger, nullable=False)
+    reason_codes: Mapped[list[str]] = mapped_column(JSONType, nullable=False)
+
+    session: Mapped[Session] = relationship(back_populates="candidates")
+
+
+class ExperimentAssignment(Base):
+    """A guest's variant for one experiment. Deterministic, so it is a cache."""
+
+    __tablename__ = "experiment_assignments"
+    __table_args__ = (
+        sa.UniqueConstraint("guest_id", "experiment_id", name="uq_assignment_guest_experiment"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(sa.Uuid, primary_key=True, default=uuid.uuid4)
+    guest_id: Mapped[uuid.UUID] = mapped_column(
+        sa.ForeignKey("guest_profiles.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    experiment_id: Mapped[str] = mapped_column(sa.String(64), nullable=False)
+    variant: Mapped[str] = mapped_column(sa.String(32), nullable=False)
+    assignment_key: Mapped[str] = mapped_column(sa.String(64), nullable=False)
+    assigned_at: Mapped[datetime] = mapped_column(
+        sa.DateTime(timezone=True), nullable=False, server_default=sa.func.current_timestamp()
+    )
