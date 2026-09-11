@@ -119,7 +119,12 @@ def test_check_in_is_persisted_and_echoed(client: TestClient) -> None:
 def test_session_can_be_created_from_a_valid_recommendation(client: TestClient) -> None:
     check_in_id = create_check_in(client)
     recommendation = client.post("/v1/recommendations", json=CHECK_IN).json()
-    del recommendation["practice_public_name"]
+    # The session endpoint takes the engine envelope, not the whole response.
+    # practice_public_name and explanation_variant are presentation, and the
+    # request model forbids extras so a client cannot smuggle a decision in
+    # alongside them.
+    for presentation_field in ("practice_public_name", "explanation_variant"):
+        recommendation.pop(presentation_field, None)
 
     response = client.post(
         "/v1/sessions", json={"check_in_id": check_in_id, "recommendation": recommendation}
@@ -290,7 +295,8 @@ def test_delete_account_page_describes_the_capability_that_exists(
 
 
 def test_privacy_page_describes_the_guest_identifier(client: TestClient) -> None:
-    body = client.get("/privacy").text.lower()
-    assert "random identifier" in body
+    body = " ".join(client.get("/privacy").text.lower().split())
+    assert "randomly generated uuid" in body
+    assert "keychain" in body
     assert "advertising id" in body
     assert "export" in body

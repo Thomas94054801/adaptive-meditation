@@ -92,6 +92,10 @@ jobs:
               print(f"compliance ok: {path.name}")
           PY
 
+      - name: Compliance consistency
+        run: python scripts/check_compliance_consistency.py
+        working-directory: ${{ github.workspace }}
+
       - name: Compare rule sets
         working-directory: backend
         run: |
@@ -133,6 +137,110 @@ jobs:
       - name: Tests
         working-directory: backend
         run: pytest -v
+
+  android-store-readiness:
+    name: Android store readiness
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Static checks (target API, permissions, cleartext)
+        run: python3 scripts/check_android_store_readiness.py
+
+      - name: Build the release app bundle
+        working-directory: apps/mobile
+        run: |
+          flutter pub get
+          flutter build appbundle --release
+
+      - name: Audit the merged release manifest
+        run: |
+          # The source manifest cannot see a permission contributed by a plugin;
+          # only the merged one can, which is why this runs after the build.
+          MANIFEST=apps/mobile/build/app/intermediates/packaged_manifests/release/processReleaseManifestForPackage/AndroidManifest.xml
+          test -f "$MANIFEST" || {
+            echo "merged manifest not found at $MANIFEST"; exit 1; }
+          python3 scripts/check_android_store_readiness.py --merged-manifest "$MANIFEST"
+
+      - name: Confirm the bundle exists
+        run: |
+          AAB=apps/mobile/build/app/outputs/bundle/release/app-release.aab
+          test -f "$AAB" || { echo "no app bundle produced"; exit 1; }
+          echo "app bundle: $(du -h "$AAB" | cut -f1)"
+
+  ios-store-readiness:
+    name: iOS store readiness
+    runs-on: macos-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Validate the privacy manifest
+        run: |
+          python3 - <<'PY'
+          import plistlib
+          from pathlib import Path
+
+          path = Path("apps/mobile/ios/Runner/PrivacyInfo.xcprivacy")
+          with path.open("rb") as handle:
+              manifest = plistlib.load(handle)
+          assert manifest["NSPrivacyTracking"] is False, "tracking must be false"
+          types = {
+              entry["NSPrivacyCollectedDataType"]
+              for entry in manifest["NSPrivacyCollectedDataTypes"]
+          }
+          assert "NSPrivacyCollectedDataTypeHealthFitness" not in types, (
+              "HealthKit is not enabled; the category must not be declared"
+          )
+          print(f"privacy manifest ok: {len(types)} data types")
+          PY
+
+      - name: Privacy manifest audit is consistent
+        run: python3 scripts/check_compliance_consistency.py
+
+      - name: Build for device without signing
+        working-directory: apps/mobile
+        run: |
+          flutter pub get
+          flutter build ios --release --no-codesign
+
+      - name: Confirm the manifest is embedded in the app bundle
+        working-directory: apps/mobile
+        run: |
+          APP=$(find build/ios/iphoneos -maxdepth 1 -name "*.app" | head -1)
+          test -n "$APP" || { echo "no .app produced"; exit 1; }
+          test -f "$APP/PrivacyInfo.xcprivacy" || {
+            echo "PrivacyInfo.xcprivacy is not in the built bundle"; exit 1; }
+          echo "privacy manifest embedded in $(basename "$APP")"
+
+      - name: No prohibited entitlement or permission string
+        working-directory: apps/mobile
+        run: |
+          APP=$(find build/ios/iphoneos -maxdepth 1 -name "*.app" | head -1)
+          for key in NSCameraUsageDescription NSMicrophoneUsageDescription \
+                     NSLocationWhenInUseUsageDescription NSHealthShareUsageDescription \
+                     NSHealthUpdateUsageDescription NSContactsUsageDescription; do
+            if plutil -p "$APP/Info.plist" | grep -q "$key"; then
+              echo "prohibited permission string in the built app: $key"; exit 1
+            fi
+          done
+          echo "no prohibited permission strings"
 
   docker:
     name: Backend image (linux/arm64)
@@ -191,53 +299,10 @@ jobs:
           fetch-depth: 0
 
       - name: Scan the tracked tree for credential shapes
-        run: |
-          python3 - <<'PY'
-          import re
-          import subprocess
-          import sys
+        run: python3 scripts/check_committed_secrets.py
 
-          # Filename shapes that should never be tracked.
-          forbidden_names = re.compile(
-              r"(^|/)(\.env(\.[^/]*)?|.*\.(pem|p8|p12|keystore|jks)|"
-              r".*service-account.*\.json)$"
-          )
-          # Value shapes. Deliberately narrow: a broad scanner that fires on the
-          # word "password" trains people to ignore it.
-          forbidden_values = [
-              ("AWS access key id", re.compile(r"AKIA[0-9A-Z]{16}")),
-              ("Google API key", re.compile(r"AIza[0-9A-Za-z_\-]{35}")),
-              ("OpenAI-style key", re.compile(r"\bsk-[A-Za-z0-9]{32,}")),
-              ("Anthropic-style key", re.compile(r"\bsk-ant-[A-Za-z0-9_\-]{20,}")),
-              ("Slack token", re.compile(r"xox[baprs]-[A-Za-z0-9\-]{10,}")),
-              ("private key block", re.compile(r"-----BEGIN [A-Z ]*PRIVATE KEY-----")),
-              ("GitHub token", re.compile(r"\bgh[pousr]_[A-Za-z0-9]{36,}")),
-          ]
-
-          tracked = subprocess.run(
-              ["git", "ls-files", "-z"], capture_output=True, check=True
-          ).stdout.decode().split("\0")
-
-          failures = []
-          for path in filter(None, tracked):
-              if path == ".github/workflows/ci.yml":
-                  continue  # this scanner's own patterns
-              if forbidden_names.search(path) and not path.endswith(".env.example"):
-                  failures.append(f"{path}: forbidden filename")
-                  continue
-              try:
-                  with open(path, encoding="utf-8") as handle:
-                      content = handle.read()
-              except (UnicodeDecodeError, FileNotFoundError):
-                  continue
-              for label, pattern in forbidden_values:
-                  if pattern.search(content):
-                      failures.append(f"{path}: {label}")
-
-          if failures:
-              print("committed credential material found:")
-              for failure in failures:
-                  print(f"  {failure}")
-              sys.exit(1)
-          print(f"scanned {len(list(filter(None, tracked)))} tracked files; clean")
-          PY
+      - name: Store release gate (informational)
+        # Never fails the build. It reports whether submission is possible, and
+        # a missing brand name must not block a pull request.
+        continue-on-error: true
+        run: python3 scripts/store_release_gate.py

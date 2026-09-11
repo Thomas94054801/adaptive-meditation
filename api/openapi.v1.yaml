@@ -1053,11 +1053,13 @@ paths:
       description: 'The recommendation itself is pure computation.
 
 
-        The database is touched only to record the presentation-experiment
+        A session is opened only to record the presentation-experiment assignment,
 
-        assignment, and only when the caller sent a guest identity. The practice
+        and only when the caller sent a guest identity. Without one this endpoint
 
-        decision is made before that and does not depend on it.'
+        still touches no database at all, which is what keeps it answerable with the
+
+        database down.'
       operationId: createRecommendation
       parameters:
       - in: header

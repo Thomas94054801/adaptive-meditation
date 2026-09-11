@@ -8,6 +8,7 @@ from fastapi import APIRouter, HTTPException, Response, status
 
 from app.api.deps import (
     CatalogDep,
+    DatabaseDep,
     DbSessionDep,
     EngineDep,
     OptionalGuestDep,
@@ -67,7 +68,7 @@ def _to_recommendation_response(
 
 
 def _explanation_variant(
-    guest_id: uuid.UUID | None, db: DbSessionDep
+    guest_id: uuid.UUID | None, database: DatabaseDep
 ) -> ExperimentVariantResponse | None:
     """Assign this guest to an explanation-wording variant.
 
@@ -76,15 +77,18 @@ def _explanation_variant(
     accident.
 
     A caller with no guest identity gets no variant rather than a random one:
-    an assignment that cannot be recorded cannot be analysed either.
+    an assignment that cannot be recorded cannot be analysed either. That case
+    opens no database session at all, which is what keeps the recommendation
+    endpoint answerable with the database down.
     """
     if guest_id is None:
         return None
     experiment = get_experiment(EXPLANATION_COPY_EXPERIMENT)
     assignment = assign(str(guest_id), experiment)
-    guests = GuestRepository(db)
-    guests.touch(guest_id)
-    guests.assignment(guest_id, assignment)
+    with database.session() as session:
+        # assignment() creates the guest row if this is its first assignment, so
+        # a repeat call is a single lookup.
+        GuestRepository(session).assignment(guest_id, assignment)
     return ExperimentVariantResponse(
         experiment_id=assignment.experiment_id, variant=assignment.variant
     )
@@ -124,17 +128,20 @@ def create_recommendation(
     payload: CheckIn,
     engine: EngineDep,
     catalog: CatalogDep,
-    db: DbSessionDep,
+    database: DatabaseDep,
     guest_id: OptionalGuestDep,
 ) -> RecommendationResponse:
     """The recommendation itself is pure computation.
 
-    The database is touched only to record the presentation-experiment
-    assignment, and only when the caller sent a guest identity. The practice
-    decision is made before that and does not depend on it.
+    A session is opened only to record the presentation-experiment assignment,
+    and only when the caller sent a guest identity. Without one this endpoint
+    still touches no database at all, which is what keeps it answerable with the
+    database down.
     """
     recommendation = engine.recommend(payload)
-    return _to_recommendation_response(recommendation, catalog, _explanation_variant(guest_id, db))
+    return _to_recommendation_response(
+        recommendation, catalog, _explanation_variant(guest_id, database)
+    )
 
 
 @router.post(
@@ -163,7 +170,6 @@ def record_exposure(
 
     assignment = assign(str(guest_id), experiment)
     guests = GuestRepository(db)
-    guests.touch(guest_id)
     guests.assignment(guest_id, assignment)
     _, created = guests.record_exposure(
         guest_id=guest_id,
