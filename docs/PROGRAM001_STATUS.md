@@ -57,6 +57,45 @@ Image, from the repository root:
 | `docker stats` | 147.5 MiB against the 768 MB ceiling |
 | `docker compose config` (from `infra/`) | resolves; limits 768 MiB api, 1536 MiB db, 128 MiB proxy - 2.4 GiB of the host's 12 GB |
 
+## Performance measurements
+
+**MEASUREMENT ENVIRONMENT: Apple Silicon (arm64) macOS workstation, Python 3.12.14.**
+**NOT AN OCI A1 MEASUREMENT.** No number in this section was taken on the
+production host. OCI Ampere A1 cores are slower than this workstation's, so
+expect a constant-factor increase on the target; these figures establish the
+order of magnitude, not the production latency.
+
+SDD section 16 asks for deterministic recommendation p95 comfortably below
+100 ms excluding network latency.
+
+| Path | p50 | p95 | p99 | max | n |
+|------|-----|-----|-----|-----|---|
+| `engine.recommend` (pure domain) | 0.0063 ms | 0.0068 ms | 0.0074 ms | 0.5546 ms | 20,000 |
+| recommend + render full session plan | 0.0362 ms | 0.0430 ms | — | 0.1313 ms | 10,000 |
+| `POST /v1/recommendations` (in-process, no network) | 0.939 ms | 1.126 ms | 1.345 ms | 15.517 ms | 3,000 |
+
+Cycled over 360 distinct valid check-ins. The pure domain p95 is roughly four
+orders of magnitude inside the budget; the HTTP path, which adds request
+validation, routing and serialization, is about 90x inside it.
+
+## Resource measurements
+
+**MEASUREMENT ENVIRONMENT: Colima VM on the same Apple Silicon workstation.**
+**ACTUAL OCI DEPLOYMENT: NOT YET MEASURED.**
+
+| Quantity | Value |
+|----------|-------|
+| Docker container RSS observed under Colima | 147.5 MiB |
+| Configured container ceiling | 768 MiB |
+| Compose total configured ceiling | 2.4 GiB of the host's 12 GiB |
+| Image size / architecture | 72.9 MB, `linux/arm64` |
+| Container user | uid 999 (non-root) |
+| Measured on an OCI Ampere A1 host | NOT YET MEASURED |
+
+The container RSS above is a single-container observation under a local VM, not
+a load test and not the production host. Treat it as evidence that the design
+fits the budget with large headroom, not as a production capacity figure.
+
 ## The required verification case
 
 `goal=overthinking, mental_activity=9, stress=8` returns, through the domain
