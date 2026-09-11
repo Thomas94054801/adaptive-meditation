@@ -17,6 +17,7 @@ from fractions import Fraction
 from string import Template
 
 from app.domain.practice.models import Protocol
+from app.domain.state.models import StateVector
 
 # Guidance cue spacing. Density 0.0 is the sparsest allowed spacing, 1.0 the
 # densest; the renderer interpolates linearly between them.
@@ -90,13 +91,20 @@ def _round_half_up(value: Decimal | Fraction | float | int) -> int:
     return int(exact.quantize(Decimal("1"), rounding=ROUND_HALF_UP))
 
 
-def allocate_stage_seconds(protocol: Protocol, total_seconds: int) -> tuple[int, ...]:
+def allocate_stage_seconds(
+    protocol: Protocol, total_seconds: int, state: StateVector | None = None
+) -> tuple[int, ...]:
     """Split ``total_seconds`` across stages, respecting each stage's bounds.
 
     Every stage gets its minimum first; the remainder is shared in proportion to
-    each stage's flexibility (``max - min``) using exact fractions and a
-    largest-remainder tie-break resolved by stage order. The result always sums
-    to ``total_seconds`` exactly.
+    each stage's flexibility (``max - min``), weighted by how many of the
+    stage's declared adaptation conditions hold for ``state``. A stage that
+    would exceed its own ``max_seconds`` is capped and its surplus redistributed
+    among the rest, repeatedly, until nothing exceeds its bound.
+
+    Exact fractions and a largest-remainder tie-break resolved by stage order,
+    so the result always sums to ``total_seconds`` exactly and is identical on
+    every machine. Passing ``state=None`` gives the unadapted split.
     """
     minimums = [stage.min_seconds for stage in protocol.stages]
     flexibility = [stage.max_seconds - stage.min_seconds for stage in protocol.stages]
@@ -110,21 +118,65 @@ def allocate_stage_seconds(protocol: Protocol, total_seconds: int) -> tuple[int,
         )
 
     remaining = total_seconds - floor_total
-    flex_total = sum(flexibility)
     if remaining == 0:
         return tuple(minimums)
-    if flex_total == 0:  # pragma: no cover - excluded by the bounds check above
-        raise ProtocolRenderError(f"protocol {protocol.id!r} has no flexible seconds to allocate")
 
-    exact = [Fraction(remaining * flex, flex_total) for flex in flexibility]
+    # One extra weight unit per matching adaptation condition (SDD 2.16).
+    weights = [
+        Fraction(flex * (1 + stage.adaptation_weight(state)))
+        for stage, flex in zip(protocol.stages, flexibility, strict=True)
+    ]
+    if sum(weights) == 0:  # pragma: no cover - excluded by the bounds check above
+        raise ProtocolRenderError(f"protocol {protocol.id!r} has no flexible seconds")
+
+    exact = _water_fill(weights, [Fraction(f) for f in flexibility], Fraction(remaining))
+
     base = [int(value) for value in exact]
     leftover = remaining - sum(base)
-    # Largest fractional remainder wins; ties go to the earlier stage.
-    order = sorted(range(len(exact)), key=lambda i: (-(exact[i] - base[i]), i))
+    # Largest fractional remainder wins; ties go to the earlier stage. Only
+    # stages with headroom left may take an extra second.
+    order = sorted(
+        (i for i in range(len(exact)) if base[i] < flexibility[i]),
+        key=lambda i: (-(exact[i] - base[i]), i),
+    )
     for index in order[:leftover]:
         base[index] += 1
 
     return tuple(minimum + extra for minimum, extra in zip(minimums, base, strict=True))
+
+
+def _water_fill(
+    weights: list[Fraction], capacities: list[Fraction], pool: Fraction
+) -> list[Fraction]:
+    """Distribute ``pool`` by weight, capping each entry at its capacity.
+
+    Weighting a stage upward can ask for more seconds than the stage is allowed
+    to hold. Capping and redistributing - rather than clipping at the end - keeps
+    the total exact instead of quietly losing the surplus.
+    """
+    size = len(weights)
+    allocation = [Fraction(0)] * size
+    capped = [False] * size
+
+    while True:
+        active_weight = sum(w for i, w in enumerate(weights) if not capped[i])
+        if active_weight == 0 or pool == 0:
+            break
+        overflowed = False
+        for index in range(size):
+            if capped[index]:
+                continue
+            share = pool * weights[index] / active_weight
+            if share > capacities[index]:
+                allocation[index] = capacities[index]
+                capped[index] = True
+                pool -= capacities[index]
+                overflowed = True
+                break
+            allocation[index] = share
+        if not overflowed:
+            break
+    return allocation
 
 
 def cue_interval_seconds(guidance_density: float) -> int:
@@ -139,8 +191,13 @@ def render_plan(
     duration_minutes: int,
     guidance_density: float,
     practice_public_title: str | None = None,
+    state: StateVector | None = None,
 ) -> SessionPlan:
-    """Render the executable timeline for one session."""
+    """Render the executable timeline for one session.
+
+    ``state`` adapts stage weights; the protocol family and the total duration
+    are fixed by the recommendation and are never changed here.
+    """
     if duration_minutes not in protocol.duration_supported:
         raise ProtocolRenderError(
             f"protocol {protocol.id!r} does not declare {duration_minutes} minutes"
@@ -152,7 +209,7 @@ def render_plan(
         )
 
     total_seconds = duration_minutes * 60
-    allocations = allocate_stage_seconds(protocol, total_seconds)
+    allocations = allocate_stage_seconds(protocol, total_seconds, state)
     interval = cue_interval_seconds(guidance_density)
     title = practice_public_title or protocol.public_title
 
