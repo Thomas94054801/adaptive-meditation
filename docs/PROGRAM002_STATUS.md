@@ -4,28 +4,24 @@ Practice Intelligence & Outcome Evidence. Contract: `SDD_PROGRAM002.md`.
 
 ## Disposition
 
-**PROGRAM002_IMPLEMENTED_CI_GREEN** — not closed. Closure requires the PR to be
-merged to `main`, which is an operator decision, not an agent one.
+**PROGRAM002_REMOTE_CLOSED**
+
+Merged to `main` and verified green on `main` itself, not only on the branch.
 
 | Field | Value |
 |-------|-------|
-| Branch | `program002/practice-intelligence` |
-| Pull request | [#2](https://github.com/Thomas94054801/adaptive-meditation/pull/2) |
-| Verified SHA | `6601fdf5c0a3ef252c21ff08a99ccd4185f6c574` |
-| Workflow run | [34612905298](https://github.com/Thomas94054801/adaptive-meditation/actions/runs/34612905298) |
-| Backend (lint, types, tests) | success |
-| Backend image (linux/arm64) | success |
-| Flutter (analyze, tests) | success |
-| No committed credential | success |
-| Later run at branch tip | [34613545251](https://github.com/Thomas94054801/adaptive-meditation/actions/runs/34613545251) at `3f2826fa`, all four jobs success |
+| Final Program002 branch SHA | `e8f67f69c0d983998390d96857925017e4cb65f8` |
+| Pull request | [#2](https://github.com/Thomas94054801/adaptive-meditation/pull/2), MERGED 2026-09-11T16:14:57Z |
+| PR #2 merge SHA | `78d04f184b0fbc371df667271163287ddab2c344` |
+| Final main SHA | `78d04f184b0fbc371df667271163287ddab2c344` |
+| Closure run (on main) | [34620889772](https://github.com/Thomas94054801/adaptive-meditation/actions/runs/34620889772) — all four jobs success |
+| Pre-merge branch run | [34614440681](https://github.com/Thomas94054801/adaptive-meditation/actions/runs/34614440681) at `e8f67f69` — all four jobs success |
+| Gate run (last executable change) | [34613545251](https://github.com/Thomas94054801/adaptive-meditation/actions/runs/34613545251) at `3f2826fa` — all four jobs success |
 
-As in Program001, the commit that records this disposition is documentation-only
-and changes no executable source; the SHAs named above are the ones the hosted
-runs measured.
-
-Every result below was produced by running the stated command. Nothing is marked
-PASS on inspection alone, and no local result is reported as a hosted or OCI
-result.
+Pre-merge verification: PR #2 was `MERGEABLE` with merge state `CLEAN`, the head
+SHA was unchanged from the verified run, and the only delta above the last
+executable-change run was a five-line documentation edit. The merge was not
+forced.
 
 ## Definition of Done
 
