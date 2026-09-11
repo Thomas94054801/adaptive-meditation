@@ -2,6 +2,22 @@
 
 Practice Intelligence & Outcome Evidence. Contract: `SDD_PROGRAM002.md`.
 
+## Disposition
+
+**PROGRAM002_IMPLEMENTED_CI_GREEN** — not closed. Closure requires the PR to be
+merged to `main`, which is an operator decision, not an agent one.
+
+| Field | Value |
+|-------|-------|
+| Branch | `program002/practice-intelligence` |
+| Pull request | [#2](https://github.com/Thomas94054801/adaptive-meditation/pull/2) |
+| Verified SHA | `6601fdf5c0a3ef252c21ff08a99ccd4185f6c574` |
+| Workflow run | [34612905298](https://github.com/Thomas94054801/adaptive-meditation/actions/runs/34612905298) |
+| Backend (lint, types, tests) | success |
+| Backend image (linux/arm64) | success |
+| Flutter (analyze, tests) | success |
+| No committed credential | success |
+
 Every result below was produced by running the stated command. Nothing is marked
 PASS on inspection alone, and no local result is reported as a hosted or OCI
 result.
@@ -36,7 +52,7 @@ result.
 | No external AI dependency | PASS | Null provider; container serves with no key |
 | ARM64 Docker build passes | PASS | See the image section below |
 | Resource budget acceptable | PASS | See the resource section below |
-| Hosted CI green | See the disposition block at the top once recorded |
+| Hosted CI green | PASS | Run 34612905298, all four jobs, at `6601fdf` |
 
 ## Verification commands and results
 
