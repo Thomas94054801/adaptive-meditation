@@ -6,33 +6,37 @@ import '../core/guest.dart';
 import '../features/history/history_store.dart';
 import '../features/welcome/welcome_screen.dart';
 import '../platform/providers.dart';
+import '../platform/secure_identity_store.dart';
 import 'app_scope.dart';
 import 'theme.dart';
 
 class AdaptiveMeditationApp extends StatelessWidget {
-  AdaptiveMeditationApp({MeditationApi? api, PlatformAdapters? adapters, super.key})
-    : _adapters = adapters ?? PlatformAdapters(storage: PreferencesStorageProvider()),
-      _api = api,
-      _guestOverride = null;
+  AdaptiveMeditationApp({
+    MeditationApi? api,
+    PlatformAdapters? adapters,
+    SecureIdentityStore? identityStore,
+    super.key,
+  }) : _identityStore = identityStore ?? PlatformSecureIdentityStore(),
+       _api = api,
+       _adaptersOverride = adapters;
 
   final MeditationApi? _api;
-  final PlatformAdapters _adapters;
-  final GuestIdentity? _guestOverride;
+  final PlatformAdapters? _adaptersOverride;
+  final SecureIdentityStore _identityStore;
 
   @override
   Widget build(BuildContext context) {
-    final GuestIdentity guest =
-        _guestOverride ?? GuestIdentity(_adapters.storage);
+    final GuestIdentity guest = GuestIdentity(_identityStore);
+    final PlatformAdapters adapters =
+        _adaptersOverride ??
+        PlatformAdapters(storage: SecureStorageProviderAdapter(_identityStore));
     return AppScope(
       api:
           _api ??
-          HttpMeditationApi(
-            config: AppConfig.fromEnvironment(),
-            guest: guest,
-          ),
+          HttpMeditationApi(config: AppConfig.fromEnvironment(), guest: guest),
       guest: guest,
       history: SessionHistoryStore(),
-      adapters: _adapters,
+      adapters: adapters,
       child: MaterialApp(
         title: 'Adaptive Meditation',
         theme: buildTheme(Brightness.light),

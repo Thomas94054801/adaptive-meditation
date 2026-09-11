@@ -10,6 +10,7 @@ import 'package:adaptive_meditation/features/recommendation/recommendation_scree
 import 'package:adaptive_meditation/features/session/session_screen.dart';
 import 'package:adaptive_meditation/features/welcome/welcome_screen.dart';
 import 'package:adaptive_meditation/platform/providers.dart';
+import 'package:adaptive_meditation/platform/secure_identity_store.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -24,7 +25,7 @@ Widget wrap(
   final PlatformAdapters resolved = adapters ?? PlatformAdapters();
   return AppScope(
     api: api,
-    guest: GuestIdentity(resolved.storage),
+    guest: GuestIdentity(InMemoryIdentityStore()),
     history: history ?? SessionHistoryStore(),
     adapters: resolved,
     child: MaterialApp(home: child),

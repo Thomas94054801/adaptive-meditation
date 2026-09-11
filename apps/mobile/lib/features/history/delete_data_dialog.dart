@@ -46,9 +46,9 @@ Future<bool> showDeleteDataDialog(BuildContext context) async {
 
   try {
     await scope.api.deleteMyData();
-    // Forget the local identifier too, so the next session starts as a new
-    // guest rather than writing back to the id just erased.
-    await scope.guest.reset();
+    // Rotate the local identifier too, so the next session starts as a
+    // genuinely new guest rather than writing back to the id just erased.
+    await scope.guest.rotate();
     return true;
   } on ApiException catch (error) {
     if (context.mounted) {
