@@ -23,7 +23,8 @@ _PAGE = """<!doctype html>
 <html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>{title}</title></head>
-<body style="font-family:system-ui,-apple-system,sans-serif;max-width:42rem;margin:2rem auto;padding:0 1rem;line-height:1.6">
+<body style="font-family:system-ui,-apple-system,sans-serif;max-width:42rem;
+margin:2rem auto;padding:0 1rem;line-height:1.6">
 <h1>{title}</h1>
 {body}
 </body></html>

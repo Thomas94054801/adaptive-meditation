@@ -235,9 +235,7 @@ def select_duration(state: StateVector, supported: tuple[int, ...]) -> int:
         return target
     candidates = [minutes for minutes in supported if minutes <= target]
     if not candidates:
-        raise ValueError(
-            f"protocol supports {supported} but the policy asked for {target} minutes"
-        )
+        raise ValueError(f"protocol supports {supported} but the policy asked for {target} minutes")
     return max(candidates)
 
 

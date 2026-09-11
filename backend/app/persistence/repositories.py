@@ -122,7 +122,9 @@ class SessionRepository:
     ) -> models.SessionFeedback:
         row = self.get_feedback(session_id)
         if row is None:
-            row = models.SessionFeedback(id=uuid.uuid4(), session_id=session_id, created_at=utcnow())
+            row = models.SessionFeedback(
+                id=uuid.uuid4(), session_id=session_id, created_at=utcnow()
+            )
             self._session.add(row)
         row.before_score = before_score
         row.after_score = after_score
