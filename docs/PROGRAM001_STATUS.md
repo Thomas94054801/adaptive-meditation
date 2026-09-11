@@ -30,7 +30,7 @@ PASS on inspection alone.
 |---|------|--------|----------|
 | 1 | Backend starts locally | PASS | `uvicorn app.main:app` serves; the same image starts in Docker and answers `/healthz` |
 | 2 | `/healthz` returns 200 | PASS | 200 with `{"status":"ok","practices_loaded":6,"protocols_loaded":6,"ai_provider_configured":false}`, with no database attached and no AI key |
-| 3 | Deterministic engine passes all required tests | PASS | SDD 15.1 cases 1–10 in `backend/tests/test_recommendation_engine.py`, plus invariants over 7,260 states |
+| 3 | Deterministic engine passes all required tests | PASS | SDD 15.1 cases 1–10 in `backend/tests/test_recommendation_engine.py`, plus invariants over 119,790 states (corrected: this figure was first reported as 7,260, which was an arithmetic error, not a different measurement) |
 | 4 | Knowledge/protocol cross-validation passes | PASS | `backend/tests/test_knowledge_validation.py`, 15 tests, each mutating a copy of the real knowledge files |
 | 5 | check-in → recommendation → session → feedback through API tests | PASS | `backend/tests/test_api.py`, including the full slice for all six goals |
 | 6 | PostgreSQL migration exists | PASS | `backend/migrations/versions/0001_initial_program001_schema.py`; applied and downgraded against PostgreSQL 16.15 |

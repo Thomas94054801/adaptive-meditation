@@ -10,6 +10,7 @@ migration, so a migration that drifts from the models fails the suite.
 from __future__ import annotations
 
 import os
+import uuid
 from collections.abc import Iterator
 from pathlib import Path
 
@@ -20,6 +21,7 @@ from fastapi.testclient import TestClient
 
 from app.domain.practice.catalog import KnowledgeCatalog, load_catalog
 from app.domain.recommendation.engine import RecommendationEngine
+from app.domain.recommendation.rulesets import V1RuleSet, V2RuleSet
 from app.main import create_app
 from app.settings import Settings
 
@@ -33,12 +35,36 @@ def running_on_postgres(url: str) -> bool:
 
 @pytest.fixture(scope="session")
 def catalog() -> KnowledgeCatalog:
-    return load_catalog(KNOWLEDGE_DIR)
+    """Production knowledge (v2)."""
+    return load_catalog(KNOWLEDGE_DIR, 2)
+
+
+@pytest.fixture(scope="session")
+def catalog_v1() -> KnowledgeCatalog:
+    """Frozen Program001 knowledge, for replay."""
+    return load_catalog(KNOWLEDGE_DIR, 1)
 
 
 @pytest.fixture(scope="session")
 def engine(catalog: KnowledgeCatalog) -> RecommendationEngine:
-    return RecommendationEngine(catalog)
+    """Production engine: rule set v2 on knowledge v2."""
+    return RecommendationEngine(catalog, V2RuleSet())
+
+
+@pytest.fixture(scope="session")
+def engine_v1(catalog_v1: KnowledgeCatalog) -> RecommendationEngine:
+    """Program001's engine, preserved so stored v1 records stay replayable."""
+    return RecommendationEngine(catalog_v1, V1RuleSet())
+
+
+@pytest.fixture
+def guest_id() -> str:
+    return str(uuid.uuid4())
+
+
+@pytest.fixture
+def guest_headers(guest_id: str) -> dict[str, str]:
+    return {"X-Guest-Id": guest_id}
 
 
 @pytest.fixture(scope="session")

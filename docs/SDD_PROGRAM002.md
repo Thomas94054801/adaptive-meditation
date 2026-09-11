@@ -290,15 +290,21 @@ rule tables alone.
 
 ### 2.14 Exhaustive state-space test
 
-Program001 tested 7,260 states with `energy` pinned. Once `energy` enters a
-rule, that number is no longer a full state space and must not be quoted as one.
+Program001 enumerated 119,790 states with `energy` pinned. (Program001's own
+report gave 7,260; that was an arithmetic slip in the write-up, not a smaller
+enumeration, and `PROGRAM001_STATUS.md` now carries the corrected figure.) Once
+`energy` enters a rule, a pinned-energy count is no longer a full state space
+and must not be quoted as one.
 
 `energy = 0..10` enters the enumeration. The new cardinality is:
 
 ```text
 6 goals x 11 stress x 11 energy x 11 mental_activity x 11 sleepiness
-  x 5 durations x 3 experience levels  =  79,860 states
+  x 5 durations x 3 experience levels  =  1,317,690 states
 ```
+
+That is 11x the Program001 enumeration, which is exactly the `energy` axis it
+had pinned.
 
 The suite reports the cardinality it actually enumerated.
 

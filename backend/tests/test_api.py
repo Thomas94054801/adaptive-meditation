@@ -37,21 +37,51 @@ def test_healthz_returns_200_without_an_ai_provider(client: TestClient) -> None:
     body = response.json()
     assert body["status"] == "ok"
     assert body["ai_provider_configured"] is False
-    assert body["practices_loaded"] == body["protocols_loaded"] == 6
+    assert body["practices_loaded"] == body["protocols_loaded"] == 7
 
 
 def test_recommendation_returns_200_and_schema_valid_json(client: TestClient) -> None:
+    """Golden case A, over HTTP, with the v2 version triple."""
     response = client.post("/v1/recommendations", json=CHECK_IN)
     assert response.status_code == 200
     body = response.json()
-    assert body == {
-        "practice_id": "body_awareness",
-        "duration_minutes": 10,
-        "guidance_density": 0.7,
-        "reason_codes": ["goal_overthinking", "high_mental_activity", "high_stress"],
-        "recommendation_version": "1",
-        "practice_public_name": "Body Awareness",
-    }
+    assert body["practice_id"] == "body_awareness"
+    assert body["duration_minutes"] == 10
+    assert body["guidance_density"] == 0.7
+    assert body["reason_codes"] == [
+        "goal_overthinking",
+        "high_mental_activity",
+        "high_stress",
+    ]
+    assert body["practice_public_name"] == "Body Awareness"
+    assert body["engine_version"] == "2"
+    assert body["rule_set_version"] == "2"
+    assert body["protocol_version"] == "2"
+    assert len(body["state_fingerprint"]) == 64
+    # recommendation_version was replaced by the triple above and must be gone.
+    assert "recommendation_version" not in body
+
+
+def test_recommendation_candidates_expose_the_ranking(client: TestClient) -> None:
+    response = client.post("/v1/recommendations/candidates", json=CHECK_IN)
+    assert response.status_code == 200
+    body = response.json()
+    assert body["rule_set_version"] == "2"
+    assert body["candidates"][0]["practice_id"] == "body_awareness"
+    scores = [candidate["score"] for candidate in body["candidates"]]
+    assert scores == sorted(scores, reverse=True)
+    assert all(0 <= score <= 100 for score in scores)
+    # A beginner cannot be offered open awareness.
+    assert {e["practice_id"] for e in body["exclusions"]} == {"open_awareness"}
+
+
+def test_the_normal_recommendation_response_has_no_candidate_list(
+    client: TestClient,
+) -> None:
+    """Scores are an offline evaluation aid, not part of the client contract."""
+    body = client.post("/v1/recommendations", json=CHECK_IN).json()
+    assert "candidates" not in body
+    assert "score" not in body
 
 
 @pytest.mark.parametrize(
@@ -116,7 +146,10 @@ def test_submitted_recommendation_that_disagrees_is_rejected(client: TestClient)
                 "duration_minutes": 20,
                 "guidance_density": 0.2,
                 "reason_codes": ["goal_overthinking"],
-                "recommendation_version": "1",
+                "engine_version": "2",
+                "rule_set_version": "2",
+                "protocol_version": "2",
+                "state_fingerprint": "0" * 64,
             },
         },
     )

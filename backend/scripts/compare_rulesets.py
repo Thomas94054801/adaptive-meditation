@@ -36,6 +36,9 @@ from app.domain.recommendation.rules_v2 import PRACTICE_ORDER
 from app.domain.recommendation.rulesets import build_rule_set
 from app.domain.state.models import AVAILABLE_MINUTES, ExperienceLevel, Goal, StateVector
 
+# Low, middle and high: enough for the energy rule to fire in reduced mode.
+QUICK_ENERGIES: tuple[int, ...] = (0, 5, 9)
+
 REPO_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_KNOWLEDGE_DIR = REPO_ROOT / "knowledge"
 
@@ -43,11 +46,15 @@ DEFAULT_KNOWLEDGE_DIR = REPO_ROOT / "knowledge"
 def iter_states(full: bool = True) -> Iterator[StateVector]:
     """Enumerate the reachable state space.
 
-    ``full`` enumerates energy 0..10 as well. Program001 pinned energy because
-    no rule read it; v2 does, so pinning it would report a state space the rules
-    do not actually live in.
+    ``full`` enumerates energy 0..10. Program001 pinned energy because no rule
+    read it; v2 does, so pinning it would report a state space the rules do not
+    actually live in.
+
+    The reduced mode samples low, middle and high energy rather than pinning a
+    single value: pinning 5 hid the energy rule entirely, and a comparison that
+    cannot see a declared rule is worse than no comparison.
     """
-    energies = range(11) if full else (5,)
+    energies = range(11) if full else QUICK_ENERGIES
     for goal, stress, energy, mental, sleepy, minutes, level in itertools.product(
         Goal, range(11), energies, range(11), range(11), AVAILABLE_MINUTES, ExperienceLevel
     ):
@@ -63,7 +70,7 @@ def iter_states(full: bool = True) -> Iterator[StateVector]:
 
 
 def state_space_size(full: bool = True) -> int:
-    energies = 11 if full else 1
+    energies = 11 if full else len(QUICK_ENERGIES)
     return len(Goal) * 11 * energies * 11 * 11 * len(AVAILABLE_MINUTES) * len(ExperienceLevel)
 
 
@@ -220,7 +227,7 @@ def main() -> int:
     parser.add_argument("--knowledge-dir", type=Path, default=DEFAULT_KNOWLEDGE_DIR)
     parser.add_argument("--json", action="store_true", help="emit JSON instead of a table")
     parser.add_argument(
-        "--quick", action="store_true", help="pin energy, for a fast smoke comparison"
+        "--quick", action="store_true", help="sample energy, for a fast smoke comparison"
     )
     args = parser.parse_args()
 
