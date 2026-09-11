@@ -1,0 +1,76 @@
+openapi: 3.1.0
+info:
+  title: Adaptive Meditation API
+  version: 0.1.0
+paths:
+  /v1/check-ins:
+    post:
+      operationId: createCheckIn
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CheckIn'
+      responses:
+        '201':
+          description: Check-in accepted
+  /v1/recommendations:
+    post:
+      operationId: createRecommendation
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CheckIn'
+      responses:
+        '200':
+          description: Deterministic practice recommendation
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Recommendation'
+  /v1/sessions:
+    post:
+      operationId: createSession
+      responses:
+        '201':
+          description: Session created
+  /v1/sessions/{session_id}/feedback:
+    post:
+      operationId: submitSessionFeedback
+      parameters:
+        - in: path
+          name: session_id
+          required: true
+          schema: {type: string}
+      responses:
+        '204': {description: Feedback stored}
+components:
+  schemas:
+    CheckIn:
+      type: object
+      required: [goal, stress, energy, mental_activity, sleepiness, available_minutes, experience_level]
+      properties:
+        goal:
+          type: string
+          enum: [stress, overthinking, focus, sleep, emotional_reset, general]
+        stress: {type: integer, minimum: 0, maximum: 10}
+        energy: {type: integer, minimum: 0, maximum: 10}
+        mental_activity: {type: integer, minimum: 0, maximum: 10}
+        sleepiness: {type: integer, minimum: 0, maximum: 10}
+        available_minutes: {type: integer, enum: [3, 5, 10, 15, 20]}
+        experience_level:
+          type: string
+          enum: [beginner, intermediate, experienced]
+    Recommendation:
+      type: object
+      required: [practice_id, duration_minutes, guidance_density, reason_codes]
+      properties:
+        practice_id: {type: string}
+        duration_minutes: {type: integer}
+        guidance_density: {type: number, minimum: 0, maximum: 1}
+        reason_codes:
+          type: array
+          items: {type: string}
