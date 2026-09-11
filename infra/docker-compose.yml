@@ -1,12 +1,26 @@
+# Program001 deployment for OCI Ampere A1: 2 OCPU, 12 GB RAM, 200 GB storage.
+# No Kubernetes, no message broker, no search cluster, no resident model.
+#
+#   cd infra && cp .env.example .env && edit .env && docker compose up -d
 services:
   api:
-    build: ../backend
+    # Built from the repository root so the knowledge files are inside the image.
+    build:
+      context: ..
+      dockerfile: backend/Dockerfile
     restart: unless-stopped
     environment:
+      APP_ENV: ${APP_ENV:-production}
       DATABASE_URL: postgresql+psycopg://adaptive:${POSTGRES_PASSWORD}@db:5432/adaptive
+      # No AI credential is required. Leaving AI_API_KEY unset keeps the null
+      # provider, and the deterministic engine is unaffected.
+      AI_PROVIDER: ${AI_PROVIDER:-null}
+      TTS_PROVIDER: ${TTS_PROVIDER:-null}
     depends_on:
       db:
         condition: service_healthy
+    expose:
+      - "8000"
     deploy:
       resources:
         limits:
@@ -19,6 +33,17 @@ services:
       POSTGRES_DB: adaptive
       POSTGRES_USER: adaptive
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    # Sized for the 1.5 GB ceiling below, not for the host's full 12 GB.
+    command:
+      - postgres
+      - -c
+      - shared_buffers=384MB
+      - -c
+      - effective_cache_size=1GB
+      - -c
+      - max_connections=50
+      - -c
+      - work_mem=8MB
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
@@ -31,5 +56,26 @@ services:
         limits:
           memory: 1536M
 
+  proxy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      SITE_ADDRESS: ${SITE_ADDRESS:-:80}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - api
+    deploy:
+      resources:
+        limits:
+          memory: 128M
+
 volumes:
   postgres_data:
+  caddy_data:
+  caddy_config:
