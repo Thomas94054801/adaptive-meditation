@@ -211,6 +211,12 @@ jobs:
           print(f"privacy manifest ok: {len(types)} data types")
           PY
 
+      - name: Install checker dependencies
+        # The compliance checker needs PyYAML. The macOS runner's system python
+        # does not ship it, which failed this job on its first run - depending
+        # on what an image happens to include is not a dependency declaration.
+        run: python3 -m pip install --break-system-packages pyyaml
+
       - name: Privacy manifest audit is consistent
         run: python3 scripts/check_compliance_consistency.py
 
@@ -297,6 +303,9 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+
+      - name: Install checker dependencies
+        run: python3 -m pip install --break-system-packages pyyaml
 
       - name: Scan the tracked tree for credential shapes
         run: python3 scripts/check_committed_secrets.py
