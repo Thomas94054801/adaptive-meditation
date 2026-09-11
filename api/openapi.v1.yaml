@@ -123,6 +123,21 @@ components:
       - check_in
       title: CheckInResponse
       type: object
+    DisclaimerResponse:
+      additionalProperties: false
+      description: The single wellness disclaimer surface.
+      properties:
+        body:
+          title: Body
+          type: string
+        title:
+          title: Title
+          type: string
+      required:
+      - title
+      - body
+      title: DisclaimerResponse
+      type: object
     ErrorBody:
       additionalProperties: false
       properties:
@@ -153,6 +168,68 @@ components:
       - experienced
       title: ExperienceLevel
       type: string
+    ExperimentVariantResponse:
+      additionalProperties: false
+      description: 'The variant assigned to this caller for one presentation experiment.
+
+
+        Returned with the recommendation so the client knows which wording to show.
+
+        Returning it is *assignment*, not exposure: the client reports exposure
+
+        separately, once it has actually rendered the variant.'
+      properties:
+        experiment_id:
+          title: Experiment Id
+          type: string
+        variant:
+          title: Variant
+          type: string
+      required:
+      - experiment_id
+      - variant
+      title: ExperimentVariantResponse
+      type: object
+    ExposureRequest:
+      additionalProperties: false
+      description: Reports that a variant was actually shown to the user.
+      properties:
+        context:
+          maxLength: 64
+          minLength: 1
+          title: Context
+          type: string
+        experiment_id:
+          maxLength: 64
+          title: Experiment Id
+          type: string
+      required:
+      - experiment_id
+      - context
+      title: ExposureRequest
+      type: object
+    ExposureResponse:
+      additionalProperties: false
+      properties:
+        context:
+          title: Context
+          type: string
+        experiment_id:
+          title: Experiment Id
+          type: string
+        recorded:
+          title: Recorded
+          type: boolean
+        variant:
+          title: Variant
+          type: string
+      required:
+      - experiment_id
+      - variant
+      - context
+      - recorded
+      title: ExposureResponse
+      type: object
     Goal:
       description: User jobs supported by V1. Values are part of the public API contract.
       enum:
@@ -179,6 +256,12 @@ components:
             additionalProperties: true
             type: object
           title: Experiment Assignments
+          type: array
+        experiment_exposures:
+          items:
+            additionalProperties: true
+            type: object
+          title: Experiment Exposures
           type: array
         feedback:
           items:
@@ -209,6 +292,7 @@ components:
       - sessions
       - feedback
       - experiment_assignments
+      - experiment_exposures
       title: GuestExportResponse
       type: object
     HTTPValidationError:
@@ -326,6 +410,10 @@ components:
           default: '2'
           title: Engine Version
           type: string
+        explanation_variant:
+          anyOf:
+          - $ref: '#/components/schemas/ExperimentVariantResponse'
+          - type: 'null'
         guidance_density:
           maximum: 1.0
           minimum: 0.0
@@ -732,6 +820,20 @@ paths:
       summary: Privacy
       tags:
       - system
+  /privacy-choices:
+    get:
+      description: The URL Apple's User Privacy Choices field points at.
+      operationId: privacyChoices
+      responses:
+        '200':
+          content:
+            text/html:
+              schema:
+                type: string
+          description: Successful Response
+      summary: Privacy Choices Page
+      tags:
+      - system
   /support:
     get:
       operationId: support
@@ -796,6 +898,72 @@ paths:
                 $ref: '#/components/schemas/ErrorResponse'
           description: Validation error
       summary: Record a current-state check-in
+      tags:
+      - v1
+  /v1/disclaimer:
+    get:
+      description: 'Served to the client so the wording lives in one place.
+
+
+        One surface, shown once. A warning repeated on every screen stops being read,
+
+        which makes the product worse without making it safer.'
+      operationId: wellnessDisclaimer
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DisclaimerResponse'
+          description: Successful Response
+      summary: The one wellness disclaimer surface
+      tags:
+      - system
+      - v1
+  /v1/experiments/exposures:
+    post:
+      description: 'Exposure, as distinct from assignment.
+
+
+        Idempotent per context, so re-opening the same screen does not double-count.
+
+        ``recorded`` says whether this call created the exposure or found one.'
+      operationId: recordExperimentExposure
+      parameters:
+      - in: header
+        name: X-Guest-Id
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-Guest-Id
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ExposureRequest'
+        required: true
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ExposureResponse'
+          description: Successful Response
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Guest identity required
+        '422':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Validation error
+      summary: Record that an experiment variant was actually shown
       tags:
       - v1
   /v1/me/data:
@@ -882,8 +1050,24 @@ paths:
       - guest
   /v1/recommendations:
     post:
-      description: Pure computation. Deliberately does not touch the database.
+      description: 'The recommendation itself is pure computation.
+
+
+        The database is touched only to record the presentation-experiment
+
+        assignment, and only when the caller sent a guest identity. The practice
+
+        decision is made before that and does not depend on it.'
       operationId: createRecommendation
+      parameters:
+      - in: header
+        name: X-Guest-Id
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-Guest-Id
       requestBody:
         content:
           application/json:

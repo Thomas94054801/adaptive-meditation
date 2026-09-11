@@ -34,3 +34,7 @@ apps/mobile/android/local.properties
 .DS_Store
 .idea/
 .vscode/
+
+# Android/iOS build outputs
+apps/mobile/build/
+apps/mobile/.gradle/

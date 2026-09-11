@@ -1,0 +1,128 @@
+# Apple Required Reason API audit.
+#
+# Scope: this application's own code, the Flutter runtime, every third-party
+# plugin, and their transitive native SDKs.
+#
+# Method: each package with native code was inspected in the local pub cache for
+# a bundled PrivacyInfo.xcprivacy and for Required Reason API usage. Findings
+# are recorded whether or not they required an app-level declaration, so the
+# absence of a declaration is a recorded conclusion rather than an omission.
+#
+# CI (scripts/check_compliance_consistency.py) fails if this file and
+# apps/mobile/ios/Runner/PrivacyInfo.xcprivacy disagree.
+schema_version: 1
+program: Program003
+audited_on: "2026-09-12"
+flutter_version: "3.47.3"
+
+app_manifest:
+  path: apps/mobile/ios/Runner/PrivacyInfo.xcprivacy
+  tracking: false
+  tracking_domains: []
+  accessed_api_types: []
+  accessed_api_rationale: >-
+    This application's own code uses no Required Reason API. The guest
+    identifier is held in Keychain, which is not a Required Reason API.
+    shared_preferences, whose UserDefaults access would have required category
+    CA92.1, was removed in Program003 when the identifier moved to secure
+    storage. An empty array is the accurate answer; inventing a reason code
+    would be worse than declaring none.
+  collected_data_types:
+    - type: NSPrivacyCollectedDataTypeUserID
+      linked: true
+      tracking: false
+      purposes: [NSPrivacyCollectedDataTypePurposeAppFunctionality]
+      maps_to_inventory: v1.identity_guest.guest_id
+      note: >-
+        The pseudonymous guest identifier. Linked, because it is the key the
+        user's own history hangs off; not tracking, because it is never joined
+        with data from other companies' apps or sites.
+    - type: NSPrivacyCollectedDataTypeOtherDataTypes
+      linked: true
+      tracking: false
+      purposes:
+        - NSPrivacyCollectedDataTypePurposeAppFunctionality
+        - NSPrivacyCollectedDataTypePurposeAnalytics
+      maps_to_inventory:
+        - v1.wellness.check_in
+        - v1.wellness.session_history
+        - v1.wellness.feedback
+        - v1.wellness.outcome_evidence
+      note: >-
+        Declared as Other Data rather than Health and Fitness. No HealthKit
+        entitlement exists and nothing is read from the device's health store;
+        these are self-reported numbers the user typed into a check-in.
+
+# Every package that ships native code, and what its own manifest declares.
+dependency_audit:
+  - package: flutter
+    version: "3.47.3"
+    ios_native_code: true
+    android_native_code: true
+    ships_privacy_manifest: true
+    manifest_location: Flutter.xcframework (engine-provided)
+    required_reason_apis_declared_by_package:
+      - category: NSPrivacyAccessedAPICategoryUserDefaults
+        reason: CA92.1
+        declared_by: flutter engine
+    app_level_declaration_required: false
+    rationale: >-
+      The engine ships its own manifest and Xcode aggregates it into the app's
+      privacy report. Re-declaring engine usage at app level would misattribute
+      it to first-party code.
+
+  - package: flutter_secure_storage
+    version: "11.1.0"
+    ios_native_code: false
+    android_native_code: true
+    ships_privacy_manifest: false
+    note: >-
+      Federated plugin. The Android implementation lives in this package and
+      declares no permissions in its manifest; the Darwin implementation is a
+      separate package audited below.
+    required_reason_apis_declared_by_package: []
+    app_level_declaration_required: false
+
+  - package: flutter_secure_storage_darwin
+    version: "0.4.2"
+    ios_native_code: true
+    android_native_code: false
+    ships_privacy_manifest: true
+    manifest_location: >-
+      darwin/flutter_secure_storage_darwin/Sources/flutter_secure_storage_darwin/Resources/PrivacyInfo.xcprivacy
+    manifest_tracking: false
+    manifest_collected_data_types: []
+    required_reason_apis_declared_by_package: []
+    app_level_declaration_required: false
+    rationale: >-
+      Uses the Keychain, which Apple does not classify as a Required Reason API.
+      The package's own manifest declares no tracking and no collected data.
+
+  - package: http
+    version: "1.6.0"
+    ios_native_code: false
+    android_native_code: false
+    ships_privacy_manifest: false
+    required_reason_apis_declared_by_package: []
+    app_level_declaration_required: false
+    rationale: Pure Dart over the platform's HTTP client. No native SDK.
+
+# Packages checked and found to contain no native code on either mobile
+# platform, so they cannot use a Required Reason API.
+dart_only_dependencies:
+  - args
+  - async
+  - characters
+  - collection
+  - crypto
+  - meta
+  - typed_data
+  - vector_math
+  - web
+
+removed_in_program003:
+  - package: shared_preferences
+    reason: >-
+      Replaced by Keychain/Keystore storage for the guest identifier. Removing
+      it also removed the only UserDefaults (CA92.1) usage the app itself had,
+      which is why the app-level accessed-API array is empty.

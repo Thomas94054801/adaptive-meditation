@@ -211,6 +211,37 @@ class RecommendationCandidate(Base):
     session: Mapped[Session] = relationship(back_populates="candidates")
 
 
+class ExperimentExposure(Base):
+    """A recorded instance of a variant actually being shown.
+
+    Separate from assignment on purpose. Being assigned to a variant is not the
+    same as having seen it, and counting assignment as exposure would inflate
+    every denominator the experiment exists to measure.
+
+    Exposure semantics: one row per (guest, experiment, context). The context is
+    the session the explanation was shown for, so re-opening the same screen is
+    the same exposure rather than a new one.
+    """
+
+    __tablename__ = "experiment_exposures"
+    __table_args__ = (
+        sa.UniqueConstraint(
+            "guest_id", "experiment_id", "context", name="uq_exposure_guest_experiment_context"
+        ),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(sa.Uuid, primary_key=True, default=uuid.uuid4)
+    guest_id: Mapped[uuid.UUID] = mapped_column(
+        sa.ForeignKey("guest_profiles.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    experiment_id: Mapped[str] = mapped_column(sa.String(64), nullable=False)
+    variant: Mapped[str] = mapped_column(sa.String(32), nullable=False)
+    context: Mapped[str] = mapped_column(sa.String(64), nullable=False)
+    exposed_at: Mapped[datetime] = mapped_column(
+        sa.DateTime(timezone=True), nullable=False, server_default=sa.func.current_timestamp()
+    )
+
+
 class ExperimentAssignment(Base):
     """A guest's variant for one experiment. Deterministic, so it is a cache."""
 

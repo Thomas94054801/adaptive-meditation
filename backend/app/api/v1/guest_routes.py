@@ -190,6 +190,17 @@ def export_guest_data(guest_id: RequiredGuestDep, db: DbSessionDep) -> GuestExpo
             }
             for row in guests.assignments(guest_id)
         ],
+        # Exposures are exported separately from assignments, for the same
+        # reason they are stored separately: they are different facts.
+        experiment_exposures=[
+            {
+                "experiment_id": row.experiment_id,
+                "variant": row.variant,
+                "context": row.context,
+                "exposed_at": row.exposed_at.isoformat(),
+            }
+            for row in guests.exposures(guest_id)
+        ],
     )
 
 

@@ -1,0 +1,23 @@
+# Launch audience policy.
+schema_version: 1
+program: Program003
+
+target_audience:
+  primary: adults
+  minimum_age_positioning: "18+"
+  designed_for_children: false
+  marketed_to_children: false
+  kids_category: false
+  child_profiling: false
+  age_gate_implemented: false
+
+rationale: >-
+  V1 is neither designed for nor marketed to children, and carries no Kids
+  category declaration. No age gate is implemented because none is claimed;
+  adding one without the surrounding compliance work would imply a protection
+  the product does not provide.
+
+if_targeting_minors_later: >-
+  Targeting minors requires its own compliance program covering COPPA, the Play
+  Families policy, Apple's Kids Category rules, parental consent and a separate
+  data-minimisation review. It is not an incremental change to this program.
