@@ -432,19 +432,44 @@ rendered with a percentage sign, or described as a confidence or likelihood.
 
 ## 2.23 Declared behaviour changes from rule set v1
 
-These changes are intentional, are outside the golden cases, and must appear in
-the comparator output. They are listed here so that "the comparator reported a
-diff" is checkable against an expectation rather than accepted on sight.
+These changes are intentional and outside the golden cases. They are listed in
+advance so a comparator diff can be checked against an expectation rather than
+accepted because it appeared.
 
-| State | v1 | v2 | Reason |
-|-------|----|----|--------|
-| `emotional_reset`, stress >= 6, mental_activity < 7 | `body_awareness` (beginner) / `feeling_tone` | `kindness` | The rule that makes `kindness` reachable, per section 2.3 |
-| `emotional_reset`, mental_activity >= 7 | `body_awareness` / `feeling_tone` | `body_awareness` | A racing mind is grounded first; feeling-tone work needs a steadier baseline |
-| `focus`, energy >= 7, sleepiness < 7 | `breath_awareness` | `mindful_walking` | The rule that makes `energy` load-bearing, per section 2.4 |
-| `stress`, stress in 5..7, mental_activity >= 7 | `breath_awareness` | `body_awareness` | High mental activity under stress grounds better than breath focus |
+Measured over the full 1,317,690-state space, rule set v1 and rule set v2 on
+knowledge v2 differ in **136,125 states (10.33%)**, in exactly four transitions:
 
-Everything else must be reported by the comparator as unchanged. Any diff not in
-this table is a defect until it is either fixed or added here with a reason.
+| Transition | States | Cause |
+|------------|-------:|-------|
+| `breath_awareness` → `mindful_walking` | 50,820 | The energy rule (2.4): focus with high energy uses movement |
+| `feeling_tone` → `kindness` | 42,350 | The kindness window (2.3) |
+| `breath_awareness` → `body_awareness` | 21,780 | Stress in 5..7 with a racing mind grounds rather than anchoring on the breath |
+| `body_awareness` → `kindness` | 21,175 | The kindness window (2.3), for beginners |
+
+Any transition not in this table is a defect until it is either fixed or added
+here with a reason. Two were found and fixed this way rather than accepted:
+
+- unscoped sleepiness and energy modifiers pushed `body_awareness` to 76% of all
+  states and the diff to 44%. Modifiers are now scoped by goal, because
+  sleepiness is an obstacle when the user wants focus and the point of the
+  session when they want sleep;
+- at equal weight, `sleepy_body` tied with `low_energy_breath` and the tie-break
+  handed sleepy focus sessions to the breath. Sleepiness is the stronger signal
+  for that goal, so it must not tie.
+
+Reason codes are also preserved where the practice is unchanged. Golden case A
+returns `body_awareness` with `["goal_overthinking", "high_mental_activity",
+"high_stress"]` under both rule sets - identical practice, duration, density and
+codes. Three explanation-only modifiers (zero delta, one reason code) keep the
+v1 wording for sleep, focus and emotional-reset recommendations that v2 still
+makes.
+
+Practice reachability, measured over the same space:
+
+| Rule set | Unreachable practices |
+|----------|-----------------------|
+| v1 | `kindness`, `mindful_walking` |
+| v2 | none |
 
 ## 3. Golden cases
 

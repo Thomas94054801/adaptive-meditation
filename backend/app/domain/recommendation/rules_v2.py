@@ -82,7 +82,7 @@ BASE_AFFINITY: dict[Goal, dict[PracticeId, int]] = {
     },
     Goal.EMOTIONAL_RESET: {
         PracticeId.FEELING_TONE: 58,
-        PracticeId.KINDNESS: 56,
+        PracticeId.KINDNESS: 50,
         PracticeId.BODY_AWARENESS: 55,
         PracticeId.BREATH_AWARENESS: 45,
         PracticeId.OPEN_AWARENESS: 40,
@@ -111,6 +111,16 @@ class Modifier:
     ``reason_codes`` is empty for a de-emphasis: reason codes explain why the
     winner won, and a penalty applied to a practice that loses anyway needs no
     user-visible justification.
+
+    ``goals`` scopes the modifier. An unscoped modifier applies to every goal,
+    which is almost always wrong: sleepiness is a problem when the user wants
+    focus and the point of the session when they want sleep. The first
+    comparator run caught exactly that - unscoped sleepiness and energy
+    modifiers pushed body_awareness to 76% of all states.
+
+    A zero delta with a reason code is an explanation-only modifier: it changes
+    no ranking and exists so a recommendation that v1 already made keeps the
+    wording v1 gave it.
     """
 
     name: str
@@ -118,6 +128,12 @@ class Modifier:
     delta: int
     predicate: Callable[[StateVector], bool]
     reason_codes: tuple[ReasonCode, ...] = field(default=())
+    goals: frozenset[Goal] | None = None
+
+    def applies_to(self, state: StateVector) -> bool:
+        if self.goals is not None and state.goal not in self.goals:
+            return False
+        return self.predicate(state)
 
 
 def _moderate_stress(state: StateVector) -> bool:
@@ -145,26 +161,40 @@ def _walking_window(state: StateVector) -> bool:
 
 
 MODIFIERS: tuple[Modifier, ...] = (
-    # Very high stress: ground first, and de-emphasise anything cognitive or open.
+    # --- stress ---------------------------------------------------------------
+    # Very high stress grounds, where stress is the presenting problem. Scoped:
+    # applying it everywhere made body_awareness win 69% of all states.
     Modifier(
         "very_high_stress_body",
         PracticeId.BODY_AWARENESS,
         20,
         lambda s: s.very_high_stress,
         (ReasonCode.VERY_HIGH_STRESS,),
+        frozenset({Goal.STRESS, Goal.SLEEP}),
     ),
     Modifier(
-        "very_high_stress_breath", PracticeId.BREATH_AWARENESS, 5, lambda s: s.very_high_stress
+        "very_high_stress_breath",
+        PracticeId.BREATH_AWARENESS,
+        5,
+        lambda s: s.very_high_stress,
+        (),
+        frozenset({Goal.STRESS}),
     ),
     Modifier(
         "very_high_stress_thought",
         PracticeId.THOUGHT_OBSERVATION,
         -15,
         lambda s: s.very_high_stress,
+        (),
+        frozenset({Goal.STRESS}),
     ),
-    Modifier("very_high_stress_open", PracticeId.OPEN_AWARENESS, -15, lambda s: s.very_high_stress),
     Modifier(
-        "very_high_stress_walking", PracticeId.MINDFUL_WALKING, -10, lambda s: s.very_high_stress
+        "very_high_stress_open",
+        PracticeId.OPEN_AWARENESS,
+        -15,
+        lambda s: s.very_high_stress,
+        (),
+        frozenset({Goal.STRESS}),
     ),
     # Moderate stress: the breath is the steadiest single anchor.
     Modifier(
@@ -173,53 +203,112 @@ MODIFIERS: tuple[Modifier, ...] = (
         6,
         _moderate_stress,
         (ReasonCode.MODERATE_STRESS,),
+        frozenset({Goal.STRESS}),
     ),
-    Modifier("moderate_stress_body", PracticeId.BODY_AWARENESS, 4, _moderate_stress),
-    Modifier("moderate_stress_thought", PracticeId.THOUGHT_OBSERVATION, -6, _moderate_stress),
-    # The kindness window.
     Modifier(
-        "kindness_window",
-        PracticeId.KINDNESS,
-        30,
-        _kindness_window,
-        (ReasonCode.SELF_DIRECTED_CARE,),
+        "moderate_stress_body",
+        PracticeId.BODY_AWARENESS,
+        4,
+        _moderate_stress,
+        (),
+        frozenset({Goal.STRESS}),
     ),
-    # A busy mind: ground it, or watch it deliberately.
     Modifier(
-        "busy_mind_body",
+        "moderate_stress_thought",
+        PracticeId.THOUGHT_OBSERVATION,
+        -6,
+        _moderate_stress,
+        (),
+        frozenset({Goal.STRESS}),
+    ),
+    # Declared change: stress in 5..7 with a racing mind grounds rather than
+    # anchoring on the breath.
+    Modifier(
+        "stress_busy_body",
         PracticeId.BODY_AWARENESS,
         12,
-        lambda s: s.high_mental_activity,
+        lambda s: _moderate_stress(s) and s.high_mental_activity,
         (ReasonCode.HIGH_MENTAL_ACTIVITY,),
+        frozenset({Goal.STRESS}),
     ),
     Modifier(
-        "busy_mind_thought",
+        "settled_experienced_open",
+        PracticeId.OPEN_AWARENESS,
+        12,
+        lambda s: not s.moderate_stress and s.experience_level is ExperienceLevel.EXPERIENCED,
+        (ReasonCode.EXPERIENCED_OPEN_AWARENESS,),
+        frozenset({Goal.STRESS}),
+    ),
+    # --- overthinking ---------------------------------------------------------
+    # A racing mind under pressure grounds; a racing mind alone is watched.
+    Modifier(
+        "overthinking_pressure_body",
+        PracticeId.BODY_AWARENESS,
+        20,
+        lambda s: s.high_mental_activity and s.elevated_stress,
+        (ReasonCode.HIGH_MENTAL_ACTIVITY, ReasonCode.HIGH_STRESS),
+        frozenset({Goal.OVERTHINKING}),
+    ),
+    Modifier(
+        "overthinking_watch_thought",
         PracticeId.THOUGHT_OBSERVATION,
         14,
-        lambda s: s.high_mental_activity,
-        (ReasonCode.COGNITIVE_OBSERVATION,),
+        lambda s: s.high_mental_activity and not s.elevated_stress,
+        (ReasonCode.HIGH_MENTAL_ACTIVITY, ReasonCode.COGNITIVE_OBSERVATION),
+        frozenset({Goal.OVERTHINKING}),
     ),
-    Modifier("busy_mind_breath", PracticeId.BREATH_AWARENESS, 2, lambda s: s.high_mental_activity),
-    Modifier("busy_mind_feeling", PracticeId.FEELING_TONE, 6, lambda s: s.high_mental_activity),
-    Modifier("busy_mind_walking", PracticeId.MINDFUL_WALKING, 4, lambda s: s.high_mental_activity),
-    Modifier("busy_mind_open", PracticeId.OPEN_AWARENESS, -8, lambda s: s.high_mental_activity),
     # Watching thoughts needs thoughts worth watching.
     Modifier(
         "quiet_mind_thought",
         PracticeId.THOUGHT_OBSERVATION,
         -10,
         lambda s: not s.high_mental_activity,
+        (),
+        frozenset({Goal.OVERTHINKING}),
     ),
-    # Sleepiness: the body holds attention when alertness is low.
+    # --- sleep ----------------------------------------------------------------
+    Modifier(
+        "sleep_busy_body",
+        PracticeId.BODY_AWARENESS,
+        12,
+        lambda s: s.high_mental_activity,
+        (ReasonCode.HIGH_MENTAL_ACTIVITY,),
+        frozenset({Goal.SLEEP}),
+    ),
+    # Explanation-only: zero delta, so no ranking moves. Keeps the wording v1
+    # gave a recommendation v2 still makes.
+    Modifier(
+        "sleep_grounding",
+        PracticeId.BODY_AWARENESS,
+        0,
+        lambda s: True,
+        (ReasonCode.GROUNDING_PREFERRED,),
+        frozenset({Goal.SLEEP}),
+    ),
+    # --- focus ----------------------------------------------------------------
+    # Sleepiness is an obstacle here and the point of the session elsewhere.
+    # 18, not 16: at 16 this tied with breath_awareness when low energy also
+    # applied, and the tie-break handed sleepy focus sessions to the breath.
+    # Sleepiness is the stronger signal for this goal, so it must not tie.
     Modifier(
         "sleepy_body",
         PracticeId.BODY_AWARENESS,
-        16,
+        18,
         lambda s: s.high_sleepiness,
         (ReasonCode.HIGH_SLEEPINESS,),
+        frozenset({Goal.FOCUS}),
     ),
-    Modifier("sleepy_open", PracticeId.OPEN_AWARENESS, -10, lambda s: s.high_sleepiness),
-    # Energy. This is what makes the field load-bearing (SDD_PROGRAM002 2.1).
+    Modifier(
+        "sleepy_open",
+        PracticeId.OPEN_AWARENESS,
+        -10,
+        lambda s: s.high_sleepiness,
+        (),
+        frozenset({Goal.FOCUS}),
+    ),
+    # The energy rule, in both directions. This is what makes the field
+    # load-bearing, and it is falsifiable: change energy alone and the
+    # recommendation changes.
     Modifier(
         "high_energy_walking",
         PracticeId.MINDFUL_WALKING,
@@ -234,15 +323,48 @@ MODIFIERS: tuple[Modifier, ...] = (
         _walking_window,
         (ReasonCode.MOVEMENT_PREFERRED,),
     ),
-    Modifier("low_energy_walking", PracticeId.MINDFUL_WALKING, -20, lambda s: s.low_energy, ()),
     Modifier(
-        "low_energy_body",
-        PracticeId.BODY_AWARENESS,
-        6,
+        "low_energy_walking",
+        PracticeId.MINDFUL_WALKING,
+        -20,
+        lambda s: s.low_energy,
+        (),
+        frozenset({Goal.FOCUS}),
+    ),
+    Modifier(
+        "low_energy_breath",
+        PracticeId.BREATH_AWARENESS,
+        4,
         lambda s: s.low_energy,
         (ReasonCode.LOW_ENERGY,),
+        frozenset({Goal.FOCUS}),
     ),
-    # Experience shapes ranking; eligibility floors are handled separately.
+    Modifier(
+        "focus_stabilize",
+        PracticeId.BREATH_AWARENESS,
+        0,
+        lambda s: True,
+        (ReasonCode.STABILIZE_ATTENTION,),
+        frozenset({Goal.FOCUS}),
+    ),
+    # --- emotional reset ------------------------------------------------------
+    Modifier(
+        "kindness_window",
+        PracticeId.KINDNESS,
+        30,
+        _kindness_window,
+        (ReasonCode.SELF_DIRECTED_CARE,),
+    ),
+    Modifier(
+        "reset_reactivity",
+        PracticeId.FEELING_TONE,
+        0,
+        lambda s: True,
+        (ReasonCode.RECOGNIZE_REACTIVITY,),
+        frozenset({Goal.EMOTIONAL_RESET}),
+    ),
+    # --- experience -----------------------------------------------------------
+    # Ranking only; eligibility floors are hard filters handled before scoring.
     Modifier(
         "beginner_thought",
         PracticeId.THOUGHT_OBSERVATION,
@@ -265,8 +387,9 @@ MODIFIERS: tuple[Modifier, ...] = (
         "intermediate_general_body",
         PracticeId.BODY_AWARENESS,
         6,
-        lambda s: s.experience_level is ExperienceLevel.INTERMEDIATE and s.goal is Goal.GENERAL,
+        lambda s: s.experience_level is ExperienceLevel.INTERMEDIATE,
         (ReasonCode.EXPERIENCE_PROGRESSION,),
+        frozenset({Goal.GENERAL}),
     ),
     Modifier(
         "experienced_open",
@@ -286,15 +409,6 @@ MODIFIERS: tuple[Modifier, ...] = (
         PracticeId.BREATH_AWARENESS,
         -2,
         lambda s: s.experience_level is ExperienceLevel.EXPERIENCED,
-    ),
-    Modifier(
-        "settled_experienced_open",
-        PracticeId.OPEN_AWARENESS,
-        12,
-        lambda s: s.goal is Goal.STRESS
-        and not s.moderate_stress
-        and s.experience_level is ExperienceLevel.EXPERIENCED,
-        (ReasonCode.EXPERIENCED_OPEN_AWARENESS,),
     ),
 )
 
@@ -331,7 +445,7 @@ def evaluate(state: StateVector, catalog: KnowledgeCatalog) -> RuleOutcome:
         score = affinity.get(practice_id, 0)
         codes: list[ReasonCode] = [goal_code]
         for modifier in MODIFIERS:
-            if modifier.practice is practice_id and modifier.predicate(state):
+            if modifier.practice is practice_id and modifier.applies_to(state):
                 score += modifier.delta
                 codes.extend(modifier.reason_codes)
 
