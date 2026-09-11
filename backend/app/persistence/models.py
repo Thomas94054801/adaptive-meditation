@@ -59,7 +59,7 @@ class CheckIn(Base):
     available_minutes: Mapped[int] = mapped_column(sa.SmallInteger, nullable=False)
     experience_level: Mapped[str] = mapped_column(sa.String(16), nullable=False)
     created_at: Mapped[datetime] = mapped_column(
-        sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now()
+        sa.DateTime(timezone=True), nullable=False, server_default=sa.func.current_timestamp()
     )
 
     sessions: Mapped[list[Session]] = relationship(back_populates="check_in")
@@ -85,7 +85,7 @@ class Session(Base):
     plan: Mapped[dict[str, object]] = mapped_column(JSONType, nullable=False)
     status: Mapped[str] = mapped_column(sa.String(16), nullable=False, default="created")
     created_at: Mapped[datetime] = mapped_column(
-        sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now()
+        sa.DateTime(timezone=True), nullable=False, server_default=sa.func.current_timestamp()
     )
     started_at: Mapped[datetime | None] = mapped_column(sa.DateTime(timezone=True), nullable=True)
     completed_at: Mapped[datetime | None] = mapped_column(sa.DateTime(timezone=True), nullable=True)
@@ -115,7 +115,7 @@ class SessionFeedback(Base):
     completed: Mapped[bool] = mapped_column(sa.Boolean, nullable=False)
     notes: Mapped[str | None] = mapped_column(sa.String(NOTES_MAX_LENGTH), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
-        sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now()
+        sa.DateTime(timezone=True), nullable=False, server_default=sa.func.current_timestamp()
     )
 
     session: Mapped[Session] = relationship(back_populates="feedback")
