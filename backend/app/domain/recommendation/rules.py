@@ -26,6 +26,9 @@ class PracticeId(StrEnum):
     THOUGHT_OBSERVATION = "thought_observation"
     KINDNESS = "kindness"
     OPEN_AWARENESS = "open_awareness"
+    # v2. No v1 rule selects it and the v1 catalog has no protocol for it, so
+    # adding the member here does not change v1 behaviour.
+    MINDFUL_WALKING = "mindful_walking"
 
 
 class ReasonCode(StrEnum):
@@ -51,6 +54,13 @@ class ReasonCode(StrEnum):
     RECOGNIZE_REACTIVITY = "recognize_reactivity"
     EXPERIENCE_PROGRESSION = "experience_progression"
     FALLBACK_PRACTICE_USED = "fallback_practice_used"
+
+    # v2 additions. Additive only: no v1 rule emits these.
+    HIGH_ENERGY = "high_energy"
+    LOW_ENERGY = "low_energy"
+    MOVEMENT_PREFERRED = "movement_preferred"
+    SELF_DIRECTED_CARE = "self_directed_care"
+    BEGINNER_SUPPORT = "beginner_support"
 
 
 # The reason codes each goal is allowed to emit. A rule that emits anything

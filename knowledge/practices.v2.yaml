@@ -1,0 +1,108 @@
+# Practice catalog v2.
+#
+# v1 (practices.v1.yaml) is frozen: it is the baseline the offline comparator
+# measures against and the knowledge the V1 replay test loads. Never edit it.
+#
+# New in v2: contraindications, minimum_experience, duration_range, outcomes,
+# and mindful_walking as the seventh executable practice.
+#
+# source_basis stays internal. The public-language guard applies to every
+# user-facing field; an `outcomes` entry names a self-reported check-in
+# dimension, never a condition.
+schema_version: 2
+practices:
+  - id: breath_awareness
+    public_name: Breath Awareness
+    intent: stabilize_attention
+    suitable_for: [stress, overthinking, focus, general]
+    contraindications: []
+    minimum_experience: beginner
+    duration_range: [3, 20]
+    guidance_density_range: [0.30, 0.75]
+    source_basis: anapanasati
+    user_facing_source_label: null
+    default_guidance_density: 0.65
+    outcomes: [stress_reduction, mental_quieting, general_helpfulness]
+
+  - id: body_awareness
+    public_name: Body Awareness
+    intent: ground_in_direct_experience
+    suitable_for: [stress, overthinking, sleep, focus, emotional_reset, general]
+    contraindications: []
+    minimum_experience: beginner
+    duration_range: [3, 20]
+    guidance_density_range: [0.30, 0.75]
+    source_basis: kayanupassana
+    user_facing_source_label: null
+    default_guidance_density: 0.60
+    outcomes: [stress_reduction, sleep_onset, mental_quieting]
+
+  - id: feeling_tone
+    public_name: Feeling Tone
+    intent: recognize_reactivity_early
+    suitable_for: [stress, overthinking, emotional_reset]
+    contraindications: []
+    minimum_experience: beginner
+    duration_range: [3, 20]
+    guidance_density_range: [0.30, 0.75]
+    source_basis: vedananupassana
+    user_facing_source_label: null
+    default_guidance_density: 0.55
+    outcomes: [emotional_reset, stress_reduction]
+
+  - id: thought_observation
+    public_name: Thought Observation
+    intent: reduce_identification_with_mental_events
+    suitable_for: [overthinking, stress, general]
+    contraindications: []
+    minimum_experience: beginner
+    duration_range: [3, 20]
+    guidance_density_range: [0.30, 0.75]
+    source_basis: cittanupassana
+    user_facing_source_label: null
+    default_guidance_density: 0.50
+    outcomes: [mental_quieting, general_helpfulness]
+
+  - id: kindness
+    public_name: Kindness Practice
+    intent: cultivate_non_hostility
+    suitable_for: [emotional_reset, stress, general]
+    contraindications: []
+    minimum_experience: beginner
+    duration_range: [3, 20]
+    guidance_density_range: [0.30, 0.75]
+    source_basis: metta
+    user_facing_source_label: null
+    default_guidance_density: 0.65
+    outcomes: [emotional_reset, general_helpfulness]
+
+  - id: open_awareness
+    public_name: Open Awareness
+    intent: observe_changing_experience_without_grasping
+    suitable_for: [general, focus, emotional_reset, stress]
+    contraindications: []
+    # Open monitoring has no anchor to return to, which gives a new practitioner
+    # nothing to do when attention scatters. It is a hard eligibility floor, not
+    # a ranking penalty.
+    minimum_experience: intermediate
+    duration_range: [3, 20]
+    guidance_density_range: [0.20, 0.75]
+    source_basis: satipatthana
+    user_facing_source_label: null
+    default_guidance_density: 0.35
+    outcomes: [general_helpfulness, mental_quieting]
+
+  - id: mindful_walking
+    public_name: Mindful Walk
+    intent: use_movement_to_steady_attention
+    suitable_for: [focus, stress, overthinking, general]
+    # Not offered when the user is winding down for sleep or is already sleepy:
+    # standing up and moving works against both.
+    contraindications: [goal_sleep, high_sleepiness]
+    minimum_experience: beginner
+    duration_range: [3, 20]
+    guidance_density_range: [0.30, 0.75]
+    source_basis: cankama
+    user_facing_source_label: null
+    default_guidance_density: 0.55
+    outcomes: [activation, mental_quieting, general_helpfulness]
