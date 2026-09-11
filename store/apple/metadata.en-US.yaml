@@ -1,0 +1,93 @@
+# App Store Connect listing metadata, en-US.
+#
+# The brand is unresolved (see compliance/store-identity.v1.yaml), so the name
+# fields carry a working title and are marked. A placeholder that reads like a
+# final brand is worse than one that says it is a placeholder.
+#
+# No medical claims anywhere. The approved positioning is mindfulness,
+# meditation, stress management, sleep preparation, focus, emotional reset and
+# self-awareness. Words like treat, cure, diagnose, therapy, anxiety disorder,
+# insomnia, depression and PTSD do not appear, and CI checks that.
+locale: en-US
+status: draft
+brand_status: BLOCKED_BRAND_IDENTITY
+
+name: "[working title] Adaptive Meditation"
+subtitle: "Meditation that matches how you feel"
+
+promotional_text: >-
+  Tell it how you are right now. It picks a practice to match and guides you
+  through it. No account, no subscription, no noise.
+
+description: |
+  Adaptive Meditation chooses a meditation practice from how you actually feel
+  right now, rather than asking you to pick from a list and hope.
+
+  You answer six short questions - what would help most, and how stressed,
+  energetic, mentally busy and sleepy you are - along with how long you have and
+  how much experience you bring. The app selects a practice that fits, builds a
+  session for the time you have, and guides you through it step by step.
+
+  Six practice families, drawn from long-established contemplative traditions
+  and presented in plain modern language:
+
+  - Breath Awareness, for steadying scattered attention
+  - Body Awareness, for grounding when the mind is racing
+  - Feeling Tone, for noticing reactions early
+  - Thought Observation, for a busy mind
+  - Kindness Practice, for emotional reset
+  - Open Awareness, when you have some experience behind you
+  - Mindful Walk, for when sitting still is the wrong answer
+
+  HOW IT CHOOSES
+
+  The practice is selected by a deterministic rules engine, not by a
+  recommendation model and not by AI. The same answers always produce the same
+  suggestion, and the app tells you in plain English why it chose what it chose.
+
+  NO ACCOUNT NEEDED
+
+  Start meditating immediately. There is no sign-up, no email, no password. Your
+  sessions are stored against a random identifier generated on your device, and
+  you can export or delete everything from inside the app at any time.
+
+  WHAT IT DOES NOT DO
+
+  No subscription. No advertising. No tracking. No access to your camera,
+  microphone, location, contacts or health data.
+
+  This is a wellness and mindfulness app. It does not diagnose, treat or cure
+  any medical or psychological condition, and it is not a substitute for
+  professional care. It cannot help in an emergency.
+
+keywords:
+  - meditation
+  - mindfulness
+  - stress
+  - sleep
+  - focus
+  - calm
+  - breathing
+  - body scan
+  - walking meditation
+  - wellbeing
+
+primary_category: Health & Fitness
+secondary_category: Lifestyle
+content_rating: 4+
+
+age_rating_answers:
+  unrestricted_web_access: false
+  gambling: false
+  user_generated_content: false
+  medical_treatment_information: false
+  note: >-
+    medical_treatment_information is answered no. The app gives mindfulness
+    instructions, not treatment information, and claims no clinical effect.
+
+support_url: BLOCKED_BRAND_IDENTITY
+marketing_url: BLOCKED_BRAND_IDENTITY
+privacy_policy_url: BLOCKED_BRAND_IDENTITY
+user_privacy_choices_url: BLOCKED_BRAND_IDENTITY
+
+copyright: BLOCKED_BRAND_IDENTITY
