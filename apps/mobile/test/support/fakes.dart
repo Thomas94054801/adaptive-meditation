@@ -11,7 +11,11 @@ class FakeMeditationApi implements MeditationApi {
   final List<CheckIn> submittedCheckIns = <CheckIn>[];
   final List<String> startedSessions = <String>[];
   final List<SessionFeedback> submittedFeedback = <SessionFeedback>[];
+  final List<String?> historyRequests = <String?>[];
   int createSessionCalls = 0;
+  int deleteCalls = 0;
+  int exportCalls = 0;
+  SessionHistoryPage history = SessionHistoryPage.empty;
 
   static const Recommendation recommendation = Recommendation(
     practiceId: 'body_awareness',
@@ -23,7 +27,9 @@ class FakeMeditationApi implements MeditationApi {
       'high_mental_activity',
       'high_stress',
     ],
-    recommendationVersion: '1',
+    engineVersion: '2',
+    ruleSetVersion: '2',
+    protocolVersion: '2',
   );
 
   static const SessionPlan plan = SessionPlan(
@@ -109,5 +115,36 @@ class FakeMeditationApi implements MeditationApi {
   ) async {
     _maybeFail();
     submittedFeedback.add(feedback);
+  }
+
+  @override
+  Future<SessionHistoryPage> sessionHistory({
+    String? cursor,
+    int limit = 20,
+  }) async {
+    _maybeFail();
+    historyRequests.add(cursor);
+    return history;
+  }
+
+  @override
+  Future<void> deleteMyData() async {
+    _maybeFail();
+    deleteCalls++;
+    history = SessionHistoryPage.empty;
+  }
+
+  @override
+  Future<Map<String, dynamic>> exportMyData() async {
+    _maybeFail();
+    exportCalls++;
+    return <String, dynamic>{
+      'guest_id': 'guest-1',
+      'check_ins': <dynamic>[],
+      'recommendations': <dynamic>[],
+      'sessions': <dynamic>[],
+      'feedback': <dynamic>[],
+      'experiment_assignments': <dynamic>[],
+    };
   }
 }

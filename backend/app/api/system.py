@@ -3,9 +3,9 @@
 ``/healthz`` must answer without an AI credential and without a reachable
 database, so it reports only what the process itself can prove.
 
-The policy routes are honest placeholders: they describe what Program001
-actually does, and the deletion route does not claim a backend capability that
-does not exist yet.
+The policy routes describe what the service actually does. The deletion page
+described a missing capability as missing in Program001; Program002 implemented
+it, so the page now describes the capability that exists.
 """
 
 from __future__ import annotations
@@ -35,7 +35,12 @@ _PRIVACY = """
 mental activity, sleepiness, available time and experience level), the session
 generated from it, and the feedback you give afterwards.</p>
 <p>You can use the product as a guest. No account, email address, name, camera,
-microphone, location or health data is required or collected in this version.</p>
+microphone, location or health data is required or collected in this version.
+Your sessions are stored against a random identifier generated on your device;
+it is not derived from your device, your advertising ID or anything that
+identifies you.</p>
+<p>You can export everything stored against that identifier, or delete all of
+it, from inside the app at any time.</p>
 <p>This wellness data is never used for advertising and is never sold.</p>
 <p>The machine-readable inventory of what is collected is published in the
 repository at <code>compliance/data-inventory.v1.yaml</code>.</p>
@@ -61,13 +66,15 @@ rather not share.</p>
 """
 
 _DELETE_ACCOUNT = """
-<p>This version has no accounts, so there is nothing to delete at an account
-level.</p>
-<p>Check-ins and sessions created as a guest are stored against generated
-identifiers only and are not linked to a person. Clearing the app's local data
-removes the identifiers this device holds.</p>
-<p>A self-service deletion endpoint arrives with accounts. Until then this page
-does not claim a capability the service does not have.</p>
+<p>There are still no accounts. Your data is stored against a random identifier
+generated on your device, which is not linked to your name, your email or
+anything about your device.</p>
+<p>You can delete all of it from inside the app: open <strong>Your
+sessions</strong> and choose <strong>Delete my meditation data</strong>. That
+removes your check-ins, sessions, feedback and any experiment assignment from
+the service permanently. There is no waiting period and nothing is kept back.</p>
+<p>You can also take a copy first: the app's export returns everything stored
+against your identifier as JSON.</p>
 """
 
 

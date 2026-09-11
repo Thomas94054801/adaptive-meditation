@@ -269,6 +269,23 @@ def test_terms_carry_no_medical_claim(client: TestClient) -> None:
     assert "not a substitute" in body
 
 
-def test_delete_account_page_does_not_claim_a_missing_capability(client: TestClient) -> None:
+def test_delete_account_page_describes_the_capability_that_exists(
+    client: TestClient,
+) -> None:
+    """Program001 said the feature was missing; Program002 built it.
+
+    The page must now point at the real thing rather than still apologising.
+    """
     body = client.get("/delete-account").text.lower()
     assert "no accounts" in body
+    assert "delete my meditation data" in body
+    assert "permanently" in body
+    # And it must not promise anything that is not implemented.
+    assert "waiting period" not in body.replace("there is no waiting period", "")
+
+
+def test_privacy_page_describes_the_guest_identifier(client: TestClient) -> None:
+    body = client.get("/privacy").text.lower()
+    assert "random identifier" in body
+    assert "advertising id" in body
+    assert "export" in body

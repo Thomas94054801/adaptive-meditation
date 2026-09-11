@@ -43,10 +43,8 @@ class _RecommendationScreenState extends State<RecommendationScreen> {
       }
       await Navigator.of(context).push<void>(
         MaterialPageRoute<void>(
-          builder: (BuildContext context) => SessionScreen(
-            session: session,
-            beforeScore: widget.receipt.checkIn.stress,
-          ),
+          builder: (BuildContext context) =>
+              SessionScreen(session: session, beforeState: widget.receipt.checkIn),
         ),
       );
     } on ApiException catch (error) {
