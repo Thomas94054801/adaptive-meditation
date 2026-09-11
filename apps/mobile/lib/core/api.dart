@@ -40,6 +40,16 @@ abstract interface class MeditationApi {
 
   /// Everything the backend holds for this guest, as JSON.
   Future<Map<String, dynamic>> exportMyData();
+
+  /// Reports that an experiment variant was actually shown.
+  Future<void> recordExposure({
+    required String experimentId,
+    required String context,
+  });
+
+  /// The single wellness disclaimer surface, served so the wording lives in
+  /// one place rather than being duplicated in the client.
+  Future<WellnessDisclaimer> disclaimer();
 }
 
 class HttpMeditationApi implements MeditationApi {
@@ -144,6 +154,34 @@ class HttpMeditationApi implements MeditationApi {
       throw ApiException(_describe(response), statusCode: response.statusCode);
     }
     return jsonDecode(response.body) as Map<String, dynamic>;
+  }
+
+  @override
+  Future<void> recordExposure({
+    required String experimentId,
+    required String context,
+  }) async {
+    final http.Response response = await _send(
+      '/v1/experiments/exposures',
+      payload: <String, dynamic>{
+        'experiment_id': experimentId,
+        'context': context,
+      },
+    );
+    if (response.statusCode != 200) {
+      throw ApiException(_describe(response), statusCode: response.statusCode);
+    }
+  }
+
+  @override
+  Future<WellnessDisclaimer> disclaimer() async {
+    final http.Response response = await _send('/v1/disclaimer', method: 'GET');
+    if (response.statusCode != 200) {
+      throw ApiException(_describe(response), statusCode: response.statusCode);
+    }
+    return WellnessDisclaimer.fromJson(
+      jsonDecode(response.body) as Map<String, dynamic>,
+    );
   }
 
   Future<Map<String, dynamic>> _postJson(

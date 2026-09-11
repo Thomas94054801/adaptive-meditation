@@ -12,10 +12,16 @@ class FakeMeditationApi implements MeditationApi {
   final List<String> startedSessions = <String>[];
   final List<SessionFeedback> submittedFeedback = <SessionFeedback>[];
   final List<String?> historyRequests = <String?>[];
+  final List<String> exposures = <String>[];
   int createSessionCalls = 0;
   int deleteCalls = 0;
   int exportCalls = 0;
   SessionHistoryPage history = SessionHistoryPage.empty;
+
+  static const ExperimentVariant variant = ExperimentVariant(
+    experimentId: 'recommendation_explanation_copy_v1',
+    variant: 'contextual',
+  );
 
   static const Recommendation recommendation = Recommendation(
     practiceId: 'body_awareness',
@@ -30,6 +36,7 @@ class FakeMeditationApi implements MeditationApi {
     engineVersion: '2',
     ruleSetVersion: '2',
     protocolVersion: '2',
+    explanationVariant: variant,
   );
 
   static const SessionPlan plan = SessionPlan(
@@ -132,6 +139,25 @@ class FakeMeditationApi implements MeditationApi {
     _maybeFail();
     deleteCalls++;
     history = SessionHistoryPage.empty;
+  }
+
+  @override
+  Future<void> recordExposure({
+    required String experimentId,
+    required String context,
+  }) async {
+    _maybeFail();
+    exposures.add('$experimentId:$context');
+  }
+
+  @override
+  Future<WellnessDisclaimer> disclaimer() async {
+    _maybeFail();
+    return const WellnessDisclaimer(
+      title: 'Before you start',
+      body: 'This app supports mindfulness and general wellbeing. It is not a '
+          'medical service and does not diagnose or treat any condition.',
+    );
   }
 
   @override

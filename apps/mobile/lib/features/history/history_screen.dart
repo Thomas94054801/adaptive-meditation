@@ -4,6 +4,7 @@ import '../../app/app_scope.dart';
 import '../../core/api.dart';
 import '../../core/models.dart';
 import 'delete_data_dialog.dart';
+import 'export_data_sheet.dart';
 
 /// The guest's sessions, read from the backend.
 ///
@@ -76,6 +77,12 @@ class _HistoryScreenState extends State<HistoryScreen> {
       appBar: AppBar(
         title: const Text('Your sessions'),
         actions: <Widget>[
+          IconButton(
+            key: const Key('history_export_data'),
+            tooltip: 'Export my meditation data',
+            icon: const Icon(Icons.ios_share),
+            onPressed: () => showExportDataSheet(context),
+          ),
           IconButton(
             key: const Key('history_delete_data'),
             tooltip: 'Delete my meditation data',

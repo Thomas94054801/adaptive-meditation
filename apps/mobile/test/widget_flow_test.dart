@@ -1,6 +1,4 @@
-import 'package:adaptive_meditation/app/app_scope.dart';
 import 'package:adaptive_meditation/core/api.dart';
-import 'package:adaptive_meditation/core/guest.dart';
 import 'package:adaptive_meditation/core/models.dart';
 import 'package:adaptive_meditation/features/check_in/check_in_screen.dart';
 import 'package:adaptive_meditation/features/feedback/feedback_screen.dart';
@@ -9,28 +7,11 @@ import 'package:adaptive_meditation/features/history/history_store.dart';
 import 'package:adaptive_meditation/features/recommendation/recommendation_screen.dart';
 import 'package:adaptive_meditation/features/session/session_screen.dart';
 import 'package:adaptive_meditation/features/welcome/welcome_screen.dart';
-import 'package:adaptive_meditation/platform/providers.dart';
-import 'package:adaptive_meditation/platform/secure_identity_store.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'support/fakes.dart';
-
-Widget wrap(
-  Widget child, {
-  required MeditationApi api,
-  SessionHistoryStore? history,
-  PlatformAdapters? adapters,
-}) {
-  final PlatformAdapters resolved = adapters ?? PlatformAdapters();
-  return AppScope(
-    api: api,
-    guest: GuestIdentity(InMemoryIdentityStore()),
-    history: history ?? SessionHistoryStore(),
-    adapters: resolved,
-    child: MaterialApp(home: child),
-  );
-}
+import 'support/harness.dart';
 
 /// Scrolls a lazily built list until [key] is on screen.
 Future<void> scrollTo(WidgetTester tester, Key key) async {
@@ -40,16 +21,6 @@ Future<void> scrollTo(WidgetTester tester, Key key) async {
     scrollable: find.byType(Scrollable).first,
   );
 }
-
-const CheckIn sampleCheckIn = CheckIn(
-  goal: Goal.overthinking,
-  stress: 8,
-  energy: 5,
-  mentalActivity: 9,
-  sleepiness: 2,
-  availableMinutes: 10,
-  experienceLevel: ExperienceLevel.beginner,
-);
 
 void main() {
   testWidgets('welcome screen offers guest entry and no registration', (

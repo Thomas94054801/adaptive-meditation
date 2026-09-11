@@ -100,6 +100,7 @@ class Recommendation {
     required this.engineVersion,
     required this.ruleSetVersion,
     required this.protocolVersion,
+    this.explanationVariant,
   });
 
   factory Recommendation.fromJson(Map<String, dynamic> json) => Recommendation(
@@ -108,6 +109,11 @@ class Recommendation {
     durationMinutes: json['duration_minutes'] as int,
     guidanceDensity: (json['guidance_density'] as num).toDouble(),
     reasonCodes: (json['reason_codes'] as List<dynamic>).cast<String>(),
+    explanationVariant: json['explanation_variant'] == null
+        ? null
+        : ExperimentVariant.fromJson(
+            json['explanation_variant'] as Map<String, dynamic>,
+          ),
     // v2 splits the single version into three. A v1 payload is still read:
     // its recommendation_version becomes the rule set version.
     engineVersion: json['engine_version'] as String? ?? '1',
@@ -126,6 +132,42 @@ class Recommendation {
   final String engineVersion;
   final String ruleSetVersion;
   final String protocolVersion;
+
+  /// Presentation experiment only. It never changes [practiceId],
+  /// [durationMinutes] or [guidanceDensity] - those come from the engine.
+  final ExperimentVariant? explanationVariant;
+}
+
+/// The presentation variant assigned to this device for one experiment.
+///
+/// Receiving it is assignment. Exposure is reported separately, once the
+/// variant has actually been rendered.
+class ExperimentVariant {
+  const ExperimentVariant({required this.experimentId, required this.variant});
+
+  factory ExperimentVariant.fromJson(Map<String, dynamic> json) =>
+      ExperimentVariant(
+        experimentId: json['experiment_id'] as String,
+        variant: json['variant'] as String,
+      );
+
+  final String experimentId;
+  final String variant;
+
+  bool get isContextual => variant == 'contextual';
+}
+
+class WellnessDisclaimer {
+  const WellnessDisclaimer({required this.title, required this.body});
+
+  factory WellnessDisclaimer.fromJson(Map<String, dynamic> json) =>
+      WellnessDisclaimer(
+        title: json['title'] as String,
+        body: json['body'] as String,
+      );
+
+  final String title;
+  final String body;
 }
 
 class SessionStage {

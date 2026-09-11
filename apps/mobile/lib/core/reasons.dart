@@ -24,6 +24,41 @@ const Map<String, String> _reasonText = <String, String>{
   'fallback_practice_used': 'the closest available practice was chosen',
 };
 
+/// The longer form used by the `contextual` variant.
+///
+/// Adds one sentence of framing before the reasons. It says nothing the
+/// `concise` form does not; the experiment is about whether the extra framing
+/// helps, not about telling one group something different.
+const Map<String, String> _contextualLeadIn = <String, String>{
+  'goal_sleep': 'Winding down works better from the body than from the head.',
+  'goal_overthinking':
+      'A busy mind settles faster with something concrete to rest on.',
+  'goal_stress': 'Stress eases when attention has one steady place to return to.',
+  'goal_focus': 'Attention steadies when it has a single anchor.',
+  'goal_emotional_reset':
+      'Strong feeling passes more easily when it is met rather than pushed away.',
+  'goal_general': 'A regular practice builds on what you already find workable.',
+};
+
+/// The explanation for a recommendation, in the requested variant.
+///
+/// `variant` affects wording only. The practice, duration and guidance density
+/// are decided by the backend engine and are not passed through here at all.
+String? explainRecommendationVariant(
+  String practiceName,
+  List<String> reasonCodes, {
+  String variant = 'concise',
+}) {
+  final String? base = explainRecommendation(practiceName, reasonCodes);
+  if (base == null || variant != 'contextual') {
+    return base;
+  }
+  final String? leadIn = reasonCodes
+      .map((String code) => _contextualLeadIn[code])
+      .firstWhere((String? value) => value != null, orElse: () => null);
+  return leadIn == null ? base : '$leadIn $base';
+}
+
 /// One sentence explaining a recommendation, or null when nothing is known.
 String? explainRecommendation(String practiceName, List<String> reasonCodes) {
   final List<String> parts = <String>[
