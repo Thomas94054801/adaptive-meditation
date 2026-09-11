@@ -37,6 +37,7 @@ Backend, from `backend/`:
 | `pytest` (SQLite fallback) | 163 passed, 1 skipped (a PostgreSQL-only JSONB assertion) |
 | `python scripts/export_openapi.py --check` | matches the implementation |
 | `alembic upgrade head` / `alembic downgrade base` | applied and reversed on PostgreSQL 16.15 |
+| live `uvicorn` run against PostgreSQL: check-in → recommendation → session → start → feedback over HTTP | session row reads `completed`, `body_awareness_v1`, `user_id` null |
 
 Client, from `apps/mobile/`:
 
@@ -54,6 +55,7 @@ Image, from the repository root:
 | container `/v1/recommendations` with no database and no AI key | 200, `body_awareness` |
 | `docker exec … id` | `uid=999(app)` — non-root |
 | `docker stats` | 147.5 MiB against the 768 MB ceiling |
+| `docker compose config` (from `infra/`) | resolves; limits 768 MiB api, 1536 MiB db, 128 MiB proxy - 2.4 GiB of the host's 12 GB |
 
 ## The required verification case
 
