@@ -1,5 +1,24 @@
 # Program001 — implementation status
 
+## Disposition
+
+**PROGRAM001_REMOTE_CLOSED**
+
+Authoritative gate: hosted GitHub Actions, all four jobs green.
+
+| Field | Value |
+|-------|-------|
+| Verified SHA | `c9b90f544b66c1b9ff3ecb97d8a424e0b027d2a4` |
+| Workflow run | [34594030538](https://github.com/Thomas94054801/adaptive-meditation/actions/runs/34594030538) |
+| Backend (lint, types, tests) | success |
+| Backend image (linux/arm64) | success |
+| Flutter (analyze, tests) | success |
+| No committed credential | success |
+| Prior green run | [34593831590](https://github.com/Thomas94054801/adaptive-meditation/actions/runs/34593831590) at `66ee4ca6`, all four jobs success |
+
+The commit that records this disposition is documentation-only and changes no
+executable source; the SHA named above is the one the hosted run measured.
+
 Verified on 2026-09-11 against branch `program001/foundation`.
 
 Every result below was produced by running the stated command. Nothing is marked
@@ -18,11 +37,11 @@ PASS on inspection alone.
 | 7 | Docker image builds for the backend | PASS | `docker build -f backend/Dockerfile .` → `linux/arm64`, 72.9 MB |
 | 8 | Flutter project analyzes successfully | PASS | `flutter analyze` → no issues, Flutter 3.47.3 / Dart 3.13.3 |
 | 9 | No prohibited V1 mobile permission introduced | PASS | `INTERNET` only; `apps/mobile/test/permissions_manifest_test.dart` checks both manifests against `compliance/permissions.v1.yaml` |
-| 10 | CI workflow exists | PARTIAL | `.github/workflows/ci.yml` with four jobs; every step was run locally, but no GitHub-hosted run has executed yet |
+| 10 | CI workflow exists | PASS | `.github/workflows/ci.yml`, four jobs, all green on hosted run 34594030538 |
 | 11 | No secret committed | PASS | The CI scanner run over 156 tracked files reports clean; `.env` shapes and key material are ignored |
 | 12 | Documentation synchronized with implementation | PASS | This file, the three READMEs, and a generated `api/openapi.v1.yaml` that CI fails on if stale |
 
-Overall: **PARTIAL** until the CI workflow has completed one hosted run.
+Overall: **PASS** — every Definition-of-Done item is satisfied and the hosted CI gate is green.
 
 ## Verification commands and results
 
@@ -113,21 +132,18 @@ engine, the HTTP API and the container:
 
 ## Known gaps
 
-1. **CI has not run on GitHub.** Every step was executed locally with the same
-   commands, but a hosted run is the only thing that proves the workflow file
-   itself is correct.
-2. **`kindness` is declared but unreachable.** It has a validated executable
+1. **`kindness` is declared but unreachable.** It has a validated executable
    protocol, and no V1 rule selects it. This is the SDD's rule set, not a defect;
    `test_reachable_practice_set_is_exactly_as_documented` pins the reachable set
    so the gap cannot be forgotten. Program002 is where it earns a rule.
-3. **`energy` is collected and unused.** No V1 rule reads it, and a test asserts
+2. **`energy` is collected and unused.** No V1 rule reads it, and a test asserts
    that the outcome is invariant to it, so the field is honest about being
    future input rather than silently ignored.
-4. **Session history is in-memory only.** It holds the current run of the app,
+3. **Session history is in-memory only.** It holds the current run of the app,
    is capped at 50 entries, and the screen says so rather than implying
    durability that does not exist.
-5. **No accounts, so no deletion endpoint.** `/delete-account` explains what
+4. **No accounts, so no deletion endpoint.** `/delete-account` explains what
    guest data is instead of claiming a capability the service does not have.
-6. **No OCI deployment has been performed.** The stack is sized and buildable
+5. **No OCI deployment has been performed.** The stack is sized and buildable
    for the target, but nothing has been deployed and no OCI credential is
    configured in this repository.
