@@ -38,6 +38,11 @@ def test_healthz_returns_200_without_an_ai_provider(client: TestClient) -> None:
     assert body["status"] == "ok"
     assert body["ai_provider_configured"] is False
     assert body["practices_loaded"] == body["protocols_loaded"] == 7
+    # Read off the live engine, not a module constant that can go stale.
+    assert body["engine_version"] == "2"
+    assert body["rule_set_version"] == "2"
+    assert body["knowledge_version"] == 2
+    assert "rules_version" not in body
 
 
 def test_recommendation_returns_200_and_schema_valid_json(client: TestClient) -> None:

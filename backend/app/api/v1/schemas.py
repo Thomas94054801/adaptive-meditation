@@ -174,7 +174,9 @@ class HealthResponse(BaseModel):
     status: Literal["ok"]
     app_env: str
     api_version: str
-    rules_version: str
+    engine_version: str
+    rule_set_version: str
+    knowledge_version: int
     practices_loaded: int
     protocols_loaded: int
     ai_provider_configured: bool

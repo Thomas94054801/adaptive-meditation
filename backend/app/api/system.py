@@ -13,9 +13,9 @@ from __future__ import annotations
 from fastapi import APIRouter
 from fastapi.responses import HTMLResponse
 
-from app.api.deps import CatalogDep, SettingsDep
+from app.api.deps import CatalogDep, EngineDep, SettingsDep
 from app.api.v1.schemas import HealthResponse
-from app.domain.recommendation.rules import RULES_VERSION
+from app.domain.recommendation.versions import ENGINE_VERSION
 
 router = APIRouter(tags=["system"])
 
@@ -79,12 +79,21 @@ against your identifier as JSON.</p>
 
 
 @router.get("/healthz", operation_id="healthz", response_model=HealthResponse)
-def healthz(settings: SettingsDep, catalog: CatalogDep) -> HealthResponse:
+def healthz(settings: SettingsDep, catalog: CatalogDep, engine: EngineDep) -> HealthResponse:
+    """Reports the versions actually serving traffic.
+
+    Program001 reported a single ``rules_version`` taken from a module constant,
+    which kept saying "1" after the engine moved to rule set 2. Reading the
+    values off the live engine and catalog means the endpoint cannot drift from
+    what is running.
+    """
     return HealthResponse(
         status="ok",
         app_env=settings.app_env,
         api_version=settings.api_version,
-        rules_version=RULES_VERSION,
+        engine_version=ENGINE_VERSION,
+        rule_set_version=engine.rule_set.version,
+        knowledge_version=catalog.knowledge_version,
         practices_loaded=len(catalog.practices),
         protocols_loaded=len(catalog.protocols_by_practice),
         ai_provider_configured=settings.ai_enabled,

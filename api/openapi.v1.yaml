@@ -232,14 +232,20 @@ components:
         app_env:
           title: App Env
           type: string
+        engine_version:
+          title: Engine Version
+          type: string
+        knowledge_version:
+          title: Knowledge Version
+          type: integer
         practices_loaded:
           title: Practices Loaded
           type: integer
         protocols_loaded:
           title: Protocols Loaded
           type: integer
-        rules_version:
-          title: Rules Version
+        rule_set_version:
+          title: Rule Set Version
           type: string
         status:
           const: ok
@@ -249,7 +255,9 @@ components:
       - status
       - app_env
       - api_version
-      - rules_version
+      - engine_version
+      - rule_set_version
+      - knowledge_version
       - practices_loaded
       - protocols_loaded
       - ai_provider_configured
@@ -690,6 +698,16 @@ paths:
       - system
   /healthz:
     get:
+      description: 'Reports the versions actually serving traffic.
+
+
+        Program001 reported a single ``rules_version`` taken from a module constant,
+
+        which kept saying "1" after the engine moved to rule set 2. Reading the
+
+        values off the live engine and catalog means the endpoint cannot drift from
+
+        what is running.'
       operationId: healthz
       responses:
         '200':

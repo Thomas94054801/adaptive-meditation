@@ -74,17 +74,29 @@ jobs:
 
           import yaml
 
-          from app.domain.practice.catalog import load_catalog
+          from app.domain.practice.catalog import KNOWLEDGE_VERSIONS, load_catalog
 
-          catalog = load_catalog(Path("../knowledge"))
-          print(f"knowledge ok: {len(catalog.practices)} practices, "
-                f"{len(catalog.protocols_by_practice)} protocols")
+          # Every version, not just the current one: v1 is the comparator
+          # baseline and the replay fixture, and must stay loadable.
+          for version in KNOWLEDGE_VERSIONS:
+              catalog = load_catalog(Path("../knowledge"), version)
+              print(f"knowledge v{version} ok: {len(catalog.practices)} practices, "
+                    f"{len(catalog.protocols_by_practice)} protocols")
 
           for path in sorted(Path("../compliance").glob("*.yaml")):
               with path.open(encoding="utf-8") as handle:
                   yaml.safe_load(handle)
               print(f"compliance ok: {path.name}")
           PY
+
+      - name: Compare rule sets
+        working-directory: backend
+        run: |
+          # The offline comparator must run, and its diff must stay inside the
+          # transitions declared in docs/SDD_PROGRAM002.md section 2.23. The
+          # assertion itself lives in tests/test_comparator.py; this step proves
+          # the script is runnable as a script, with no network.
+          python scripts/compare_rulesets.py --baseline v1 --candidate v2 --quick
 
       - name: Validate the OpenAPI document
         working-directory: backend
@@ -103,11 +115,15 @@ jobs:
           print(f"openapi ok: {len(document['paths'])} paths")
           PY
 
-      - name: Run the migration against PostgreSQL
+      - name: Run the migrations against PostgreSQL
         working-directory: backend
         env:
           DATABASE_URL: ${{ env.TEST_DATABASE_URL }}
         run: |
+          # upgrade -> downgrade one step -> upgrade, so each revision is
+          # exercised in both directions, not just the head state.
+          alembic upgrade head
+          alembic downgrade 0001
           alembic upgrade head
           alembic downgrade base
 
