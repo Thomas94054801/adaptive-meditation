@@ -116,10 +116,7 @@ void main() {
 
     expect(find.text('Body Awareness'), findsOneWidget);
     expect(find.text('10 minutes'), findsOneWidget);
-    expect(
-      find.textContaining('because your mind is busy'),
-      findsOneWidget,
-    );
+    expect(find.textContaining('because your mind is busy'), findsOneWidget);
     // Internal source mapping must never be displayed.
     expect(find.textContaining('kayanupassana'), findsNothing);
     expect(find.textContaining('body_awareness'), findsNothing);
@@ -281,12 +278,16 @@ void main() {
   testWidgets('an empty history says so without promising anything', (
     WidgetTester tester,
   ) async {
-    await tester.pumpWidget(wrap(const HistoryScreen(), api: FakeMeditationApi()));
+    await tester.pumpWidget(
+      wrap(const HistoryScreen(), api: FakeMeditationApi()),
+    );
     await tester.pumpAndSettle();
     expect(find.byKey(const Key('history_empty')), findsOneWidget);
   });
 
-  testWidgets('deleting data asks once, then deletes', (WidgetTester tester) async {
+  testWidgets('deleting data asks once, then deletes', (
+    WidgetTester tester,
+  ) async {
     final FakeMeditationApi api = FakeMeditationApi()
       ..history = SessionHistoryPage(
         items: <SessionHistoryItem>[

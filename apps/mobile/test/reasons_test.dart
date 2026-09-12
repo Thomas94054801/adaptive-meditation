@@ -32,7 +32,10 @@ void main() {
   });
 
   test('no known codes gives no sentence at all', () {
-    expect(explainRecommendation('Body Awareness', <String>['nonsense']), isNull);
+    expect(
+      explainRecommendation('Body Awareness', <String>['nonsense']),
+      isNull,
+    );
     expect(explainRecommendation('Body Awareness', <String>[]), isNull);
   });
 

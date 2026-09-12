@@ -1,8 +1,9 @@
 {
-  "note": "Every audio asset shipped with this app is listed here with its origin. Nothing is imported from a third party. An asset without an entry in this file fails the provenance test.",
+  "note": "Every audio asset shipped with this app is listed here with its origin. Nothing is imported from a third party. An asset without an entry in this file fails the provenance test. flutter_asset is the key the app loads it by; file is the repository path.",
   "assets": [
     {
-      "file": "assets/audio/bells/opening.wav",
+      "file": "apps/mobile/assets/audio/bells/opening.wav",
+      "flutter_asset": "assets/audio/bells/opening.wav",
       "asset_key": "bell.opening",
       "purpose": "Marks the start of a session.",
       "origin": "generated",
@@ -16,7 +17,8 @@
       "sha256": "df36e2e967a5981b988c5ea278b3a95222eb3bc8d78cb16c338ef3a7811c81cb"
     },
     {
-      "file": "assets/audio/bells/closing.wav",
+      "file": "apps/mobile/assets/audio/bells/closing.wav",
+      "flutter_asset": "assets/audio/bells/closing.wav",
       "asset_key": "bell.closing",
       "purpose": "Marks the end of a session. Lower and longer than the opening.",
       "origin": "generated",
@@ -30,7 +32,8 @@
       "sha256": "37fa05ae94c9b41161b5ef02812d39762a5c9bb9ecd431712b4f0412dab210f7"
     },
     {
-      "file": "assets/audio/bells/transition.wav",
+      "file": "apps/mobile/assets/audio/bells/transition.wav",
+      "flutter_asset": "assets/audio/bells/transition.wav",
       "asset_key": "bell.transition",
       "purpose": "Optional marker between stages. Quieter and shorter.",
       "origin": "generated",

@@ -150,10 +150,7 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      expect(
-        find.textContaining('A busy mind settles faster'),
-        findsOneWidget,
-      );
+      expect(find.textContaining('A busy mind settles faster'), findsOneWidget);
     });
   });
 }

@@ -18,11 +18,20 @@ void main() {
       expect(await GuestIdentity(store).ensure(), first);
     });
 
-    test('a restored id is reported as restored, a new one as created', () async {
-      final SecureIdentityStore store = InMemoryIdentityStore();
-      expect((await GuestIdentity(store).resolve()).source, GuestIdentitySource.created);
-      expect((await GuestIdentity(store).resolve()).source, GuestIdentitySource.restored);
-    });
+    test(
+      'a restored id is reported as restored, a new one as created',
+      () async {
+        final SecureIdentityStore store = InMemoryIdentityStore();
+        expect(
+          (await GuestIdentity(store).resolve()).source,
+          GuestIdentitySource.created,
+        );
+        expect(
+          (await GuestIdentity(store).resolve()).source,
+          GuestIdentitySource.restored,
+        );
+      },
+    );
 
     test('rotate issues a different id and persists it', () async {
       final SecureIdentityStore store = InMemoryIdentityStore();
@@ -36,19 +45,22 @@ void main() {
   });
 
   group('secure storage failure handling', () {
-    test('a locked device rethrows instead of minting a new identity', () async {
-      // Retrying can succeed. Inventing an identity here would strand the
-      // existing history under an id nobody holds.
-      final InMemoryIdentityStore store = InMemoryIdentityStore()
-        ..failWith = const SecureStorageException(
-          SecureStorageFailure.deviceLocked,
-          'device is locked',
+    test(
+      'a locked device rethrows instead of minting a new identity',
+      () async {
+        // Retrying can succeed. Inventing an identity here would strand the
+        // existing history under an id nobody holds.
+        final InMemoryIdentityStore store = InMemoryIdentityStore()
+          ..failWith = const SecureStorageException(
+            SecureStorageFailure.deviceLocked,
+            'device is locked',
+          );
+        await expectLater(
+          GuestIdentity(store).resolve(),
+          throwsA(isA<SecureStorageException>()),
         );
-      await expectLater(
-        GuestIdentity(store).resolve(),
-        throwsA(isA<SecureStorageException>()),
-      );
-    });
+      },
+    );
 
     test('a permanent failure yields a reported ephemeral identity', () async {
       final InMemoryIdentityStore store = InMemoryIdentityStore()

@@ -32,8 +32,12 @@ BIT_DEPTH = 16
 CHANNELS = 1
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
-BELL_DIR = REPO_ROOT / "assets" / "audio" / "bells"
-MANIFEST = REPO_ROOT / "assets" / "audio" / "PROVENANCE.json"
+# Inside the Flutter package, because Flutter can only bundle assets that live
+# under the package root. Program004 generated these at the repository root and
+# never declared them in pubspec.yaml, so they could not reach a device.
+ASSET_ROOT = REPO_ROOT / "apps" / "mobile" / "assets" / "audio"
+BELL_DIR = ASSET_ROOT / "bells"
+MANIFEST = ASSET_ROOT / "PROVENANCE.json"
 
 
 @dataclass(frozen=True, slots=True)
@@ -154,7 +158,8 @@ def build(check_only: bool = False) -> int:
 
         entries.append(
             {
-                "file": f"assets/audio/bells/{bell.name}.wav",
+                "file": f"apps/mobile/assets/audio/bells/{bell.name}.wav",
+                "flutter_asset": f"assets/audio/bells/{bell.name}.wav",
                 "asset_key": f"bell.{bell.name}",
                 "purpose": bell.purpose,
                 "origin": "generated",
@@ -173,7 +178,8 @@ def build(check_only: bool = False) -> int:
         "note": (
             "Every audio asset shipped with this app is listed here with its "
             "origin. Nothing is imported from a third party. An asset without "
-            "an entry in this file fails the provenance test."
+            "an entry in this file fails the provenance test. flutter_asset "
+            "is the key the app loads it by; file is the repository path."
         ),
         "assets": entries,
     }

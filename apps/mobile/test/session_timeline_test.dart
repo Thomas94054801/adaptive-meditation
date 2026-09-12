@@ -4,7 +4,9 @@ import 'package:flutter_test/flutter_test.dart';
 import 'support/fakes.dart';
 
 void main() {
-  final SessionTimeline timeline = const SessionTimeline(FakeMeditationApi.plan);
+  final SessionTimeline timeline = const SessionTimeline(
+    FakeMeditationApi.plan,
+  );
 
   test('total length matches the plan', () {
     expect(timeline.totalSeconds, 600);
