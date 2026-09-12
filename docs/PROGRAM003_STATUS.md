@@ -9,8 +9,20 @@ and no store submission is claimed.
 
 ## Disposition
 
-**PROGRAM003_IMPLEMENTED_CI_GREEN** — recorded once the hosted CI run for this
-branch is green; the run id is in the table below.
+**PROGRAM003_IMPLEMENTED_CI_GREEN**
+
+| Field | Value |
+|-------|-------|
+| Branch | `program003/store-readiness` |
+| Pull request | [#3](https://github.com/Thomas94054801/adaptive-meditation/pull/3) |
+| Verified SHA | `18ca66d4fbbb21dc21b538e7ad0196085a405663` |
+| Workflow run | [34668050269](https://github.com/Thomas94054801/adaptive-meditation/actions/runs/34668050269) |
+| Backend (lint, types, tests) | success |
+| Android store readiness | success |
+| iOS store readiness | success |
+| Backend image (linux/arm64) | success |
+| Flutter (analyze, tests) | success |
+| No committed credential | success |
 
 Not `PROGRAM003_STORE_READY`. The Store Release Gate reports BLOCKED on nine
 external conditions — Apple and Google credentials, and a public brand that has
@@ -31,7 +43,7 @@ section 48 forbids.
 | Android target API >= 36 verified | PASS — pinned literal, merged manifest confirms |
 | Android release AAB builds | PASS — 50.6 MB |
 | Android merged permission audit passes | PASS — INTERNET only |
-| iOS release compile succeeds | BLOCKED — full Xcode absent locally; CI job runs it |
+| iOS release compile succeeds | PASS — on CI (macOS runner), run 34668050269 |
 | `PrivacyInfo.xcprivacy` exists and validates | PASS |
 | required-reason API audit exists | PASS |
 | third-party SDK inventory exists | PASS |
@@ -55,7 +67,7 @@ section 48 forbids.
 | backend tests pass | PASS — 330 |
 | Flutter tests pass | PASS — 70 |
 | ARM64 Docker build passes | PASS |
-| hosted CI green | recorded below once the run completes |
+| hosted CI green | PASS — all six jobs, run 34668050269 |
 | performance regression acceptable | PASS with two explained flags |
 | memory regression acceptable | PASS — 146.2 MiB against a 250 MiB flag |
 
@@ -85,7 +97,7 @@ submission and nothing else.
 | no prohibited iOS permission strings | PASS |
 | no embedded secrets | PASS |
 | Android release AAB builds | PASS |
-| iOS release compile | BLOCKED — external |
+| iOS release compile | BLOCKED locally, PASS on CI |
 | Android production signing key | BLOCKED — external |
 | Apple distribution certificate | BLOCKED — external |
 | brand_name final | BLOCKED — external |
@@ -101,7 +113,7 @@ None of these is an engineering failure, and none of them stopped the work.
 
 | Blocker | Kind | Effect |
 |---------|------|--------|
-| Full Xcode not installed on this machine | toolchain | `flutter build ios --release --no-codesign` could not be run locally. The CI `ios-store-readiness` job runs it on a macOS runner. |
+| Full Xcode not installed on this machine | toolchain | `flutter build ios --release --no-codesign` could not be run locally. CI runs it on a macOS runner and it passed, so this blocked nothing. |
 | Apple Developer membership / distribution certificate / provisioning | credential | No signed archive, no App Store Connect record |
 | Google Play developer account and upload keystore | credential | AAB builds unsigned; no production upload |
 | Final public brand | product decision | Bundle id, applicationId, domain and support email all derive from it |
@@ -155,7 +167,7 @@ Client, from `apps/mobile/`:
 | `flutter analyze` | No issues found |
 | `flutter test` | **70 passed** |
 | `flutter build appbundle --release` | **succeeded, 50.6 MB** |
-| `flutter build ios --release --no-codesign` | not run locally — full Xcode absent; see CI |
+| `flutter build ios --release --no-codesign` | **not run locally** (full Xcode absent); **succeeded on CI** |
 
 Gates, from the repository root:
 
@@ -204,7 +216,8 @@ contributed by a plugin, and the gate found one on its first run.
 | Health and Fitness declared | **no** — HealthKit is not enabled |
 | Required Reason APIs (app level) | **none** |
 | Prohibited permission strings in `Info.plist` | none |
-| Release compile | **not run locally** — full Xcode absent; the CI `ios-store-readiness` job runs it |
+| Release compile | **PASS on CI** — `flutter build ios --release --no-codesign` on a macOS runner |
+| Manifest embedded in the built `.app` | **verified on CI** — the step fails if it is absent |
 | Signing | **EXTERNAL_CREDENTIAL_BLOCKED** |
 
 The app-level Required Reason API array is empty because it is accurate.
@@ -260,9 +273,10 @@ DEPLOYMENT: NOT MEASURED.**
 
 1. **No OCI deployment.** Every latency and memory figure here is from this
    workstation. Nothing has been deployed and no OCI credential is configured.
-2. **iOS release build not run locally.** Full Xcode is not installed here. The
-   CI job runs it on a macOS runner; until that job has gone green, the iOS
-   build result is CI evidence rather than local evidence.
+2. **iOS release build is CI evidence, not local evidence.** Full Xcode is not
+   installed on this machine. The `ios-store-readiness` job built the release
+   app on a macOS runner and verified `PrivacyInfo.xcprivacy` is inside the
+   resulting bundle, so the result is real - it was simply not produced here.
 3. **Accessibility is an automated floor, not a conformance claim.** Tap target
    size, contrast, labelling and 2x Dynamic Type are asserted. Screen-reader
    traversal order, real VoiceOver and TalkBack behaviour, and reduced-motion
