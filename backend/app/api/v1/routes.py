@@ -52,6 +52,7 @@ from app.domain.timeline.service import (
 from app.persistence import models
 from app.persistence.repositories import (
     CheckInRepository,
+    EventDraft,
     GuestRepository,
     SessionDefinitionRepository,
     SessionEventRepository,
@@ -444,6 +445,13 @@ def apply_playback_command(
     and a sequence the journal already holds.
     """
     row = _owned_session(session_id, guest_id, db)
+    events = SessionEventRepository(db)
+    if events.command_already_applied(row.id, payload.command_id):
+        # SDD 5.4: a replayed command_id returns the same result without
+        # re-applying it. The sequence rule below catches an identical retry;
+        # this catches the same command retried under a fresh sequence.
+        return _playback_state(row, applied=False)
+
     try:
         outcome = apply_command(
             current_state=row.run_state,
@@ -476,7 +484,7 @@ def apply_playback_command(
         elif outcome.state.value == "abandoned":
             sessions.finish(row, completed=False)
 
-        _, created = SessionEventRepository(db).append(
+        _, created = events.append(
             session_id=row.id,
             sequence=payload.sequence,
             event_type=_EVENT_FOR_COMMAND[payload.command],
@@ -534,22 +542,20 @@ def append_session_events(
     connection re-sends the batch and gets the same journal, not a doubled one.
     """
     row = _owned_session(session_id, guest_id, db)
-    events = SessionEventRepository(db)
-    accepted = duplicates = 0
-    for event in payload.events:
-        _, created = events.append(
-            session_id=row.id,
-            sequence=event.sequence,
-            event_type=event.event_type,
-            segment_id=event.segment_id,
-            elapsed_ms=event.elapsed_ms,
-            command_id=event.command_id,
-            detail=event.detail,
-        )
-        if created:
-            accepted += 1
-        else:
-            duplicates += 1
+    accepted, duplicates = SessionEventRepository(db).append_many(
+        row.id,
+        [
+            EventDraft(
+                sequence=event.sequence,
+                event_type=event.event_type,
+                segment_id=event.segment_id,
+                elapsed_ms=event.elapsed_ms,
+                command_id=event.command_id,
+                detail=event.detail,
+            )
+            for event in payload.events
+        ],
+    )
     return SessionEventBatchResponse(accepted=accepted, duplicates=duplicates)
 
 

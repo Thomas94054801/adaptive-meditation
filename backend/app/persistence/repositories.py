@@ -7,6 +7,8 @@ assembled from request data.
 from __future__ import annotations
 
 import uuid
+from collections.abc import Sequence
+from dataclasses import dataclass
 from datetime import UTC, datetime
 
 import sqlalchemy as sa
@@ -368,6 +370,18 @@ class SessionDefinitionRepository:
         return SessionDefinition.from_dict(dict(row.content))
 
 
+@dataclass(frozen=True, slots=True)
+class EventDraft:
+    """One event a client is asking to append."""
+
+    sequence: int
+    event_type: str
+    segment_id: str | None = None
+    elapsed_ms: int = 0
+    command_id: str | None = None
+    detail: dict[str, object] | None = None
+
+
 class SessionEventRepository:
     """Append-only playback journal.
 
@@ -418,6 +432,70 @@ class SessionEventRepository:
         self._session.add(row)
         self._session.flush()
         return row, True
+
+    def append_many(self, session_id: uuid.UUID, events: Sequence[EventDraft]) -> tuple[int, int]:
+        """Append a batch, returning (accepted, duplicates).
+
+        Two queries regardless of batch size - one to read the sequences already
+        present, one to insert the rest - because the budget is two per batch
+        and a select-then-insert per event turns a 200-event batch into 400
+        round trips.
+        """
+        if not events:
+            return 0, 0
+
+        wanted = {event.sequence for event in events}
+        taken_stmt = select(models.SessionEvent.sequence).where(
+            models.SessionEvent.session_id == session_id,
+            models.SessionEvent.sequence.in_(wanted),
+        )
+        taken = set(self._session.execute(taken_stmt).scalars())
+
+        now = utcnow()
+        rows: list[models.SessionEvent] = []
+        # Within one batch a repeated sequence is itself a duplicate; without
+        # this the unique constraint would reject the whole insert.
+        seen: set[int] = set()
+        for event in events:
+            if event.sequence in taken or event.sequence in seen:
+                continue
+            seen.add(event.sequence)
+            rows.append(
+                models.SessionEvent(
+                    id=uuid.uuid4(),
+                    session_id=session_id,
+                    sequence=event.sequence,
+                    event_type=event.event_type,
+                    segment_id=event.segment_id,
+                    elapsed_ms=max(0, event.elapsed_ms),
+                    command_id=event.command_id,
+                    detail=event.detail,
+                    occurred_at=now,
+                )
+            )
+
+        if rows:
+            self._session.add_all(rows)
+            self._session.flush()
+        return len(rows), len(events) - len(rows)
+
+    def command_already_applied(self, session_id: uuid.UUID, command_id: str) -> bool:
+        """Whether this command_id is already in the journal.
+
+        SDD section 5.4: replaying a command_id returns the same result without
+        re-applying it. The sequence rule catches an identical retry; this
+        catches a client that retried the same command under a new sequence,
+        which is the case that would otherwise double-apply.
+        """
+        stmt = (
+            select(models.SessionEvent.id)
+            .where(
+                models.SessionEvent.session_id == session_id,
+                models.SessionEvent.command_id == command_id,
+            )
+            .limit(1)
+        )
+        return self._session.execute(stmt).first() is not None
 
     def read(self, session_id: uuid.UUID) -> list[models.SessionEvent]:
         stmt = (
