@@ -4,6 +4,7 @@ import '../../app/app_scope.dart';
 import '../../core/api.dart';
 import '../../core/models.dart';
 import '../../core/reasons.dart';
+import '../session/player_screen.dart';
 import '../session/session_screen.dart';
 
 /// Shows the selected practice, how long it runs, and why - in plain language.
@@ -64,14 +65,30 @@ class _RecommendationScreenState extends State<RecommendationScreen> {
       final MeditationSession session = await scope.api.createSession(
         widget.receipt.id,
       );
-      await scope.api.startSession(session.id);
+      final SessionPlanV2? typedPlan = session.planV2;
+      if (typedPlan == null) {
+        // A session the backend could not give a typed plan. It still plays,
+        // on the stage timeline, and the legacy start call is its only way of
+        // recording that it began.
+        await scope.api.startSession(session.id);
+      }
       if (!mounted) {
         return;
       }
       await Navigator.of(context).push<void>(
         MaterialPageRoute<void>(
-          builder: (BuildContext context) =>
-              SessionScreen(session: session, beforeState: widget.receipt.checkIn),
+          builder: (BuildContext context) => typedPlan == null
+              ? SessionScreen(
+                  session: session,
+                  beforeState: widget.receipt.checkIn,
+                )
+              // The player drives the run state machine itself, so it does not
+              // need the legacy start call: one authority over the run.
+              : PlayerScreen(
+                  session: session,
+                  plan: typedPlan,
+                  beforeState: widget.receipt.checkIn,
+                ),
         ),
       );
     } on ApiException catch (error) {

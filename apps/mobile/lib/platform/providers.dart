@@ -8,6 +8,9 @@
 /// The declarations are mirrored in compliance/permissions.v1.yaml.
 library;
 
+import 'audio_session.dart';
+import 'silent_audio_session.dart';
+
 /// Account identity. Program001 is guest-only; no account exists to sign in to.
 abstract interface class AuthProvider {
   bool get isSupported;
@@ -48,9 +51,33 @@ class UnavailableBillingProvider implements BillingProvider {
   Future<void> restorePurchases() async {}
 }
 
-/// Spoken guidance. Program001 renders stage text; audio arrives in Program004.
+/// What a probe established about a voice — never what was assumed.
+///
+/// Native does not mean offline. On Android the system engine may synthesise
+/// over the network and the app cannot observe it directly, so a voice earns
+/// [localConfirmed] only by rendering with the network down. Until then the
+/// honest label is [localUnconfirmed]: still usable, just not something a store
+/// listing or a privacy policy may describe as working offline.
+enum TtsOfflineCapability {
+  localConfirmed('local_confirmed'),
+  localUnconfirmed('local_unconfirmed'),
+  networkRequired('network_required'),
+  unavailable('unavailable');
+
+  const TtsOfflineCapability(this.wireValue);
+
+  final String wireValue;
+
+  /// Whether an offline claim may be made on this evidence.
+  bool get permitsOfflineClaim => this == localConfirmed;
+}
+
+/// Spoken guidance. Device-native TTS is the first shipped provider.
 abstract interface class TtsProvider {
   bool get isSupported;
+
+  /// What has actually been established about this voice working offline.
+  TtsOfflineCapability get offlineCapability;
 
   Future<void> speak(String text);
 
@@ -62,6 +89,10 @@ class SilentTtsProvider implements TtsProvider {
 
   @override
   bool get isSupported => false;
+
+  @override
+  TtsOfflineCapability get offlineCapability =>
+      TtsOfflineCapability.unavailable;
 
   @override
   Future<void> speak(String text) async {}
@@ -133,12 +164,14 @@ class PlatformAdapters {
     SecureStorageProvider? storage,
     NotificationProvider? notifications,
     HealthProvider? health,
+    AudioSessionPort? audioSession,
   }) : auth = auth ?? const GuestOnlyAuthProvider(),
        billing = billing ?? const UnavailableBillingProvider(),
        tts = tts ?? const SilentTtsProvider(),
        storage = storage ?? InMemorySecureStorageProvider(),
        notifications = notifications ?? const DisabledNotificationProvider(),
-       health = health ?? const DeferredHealthProvider();
+       health = health ?? const DeferredHealthProvider(),
+       audioSession = audioSession ?? SilentAudioSession();
 
   final AuthProvider auth;
   final BillingProvider billing;
@@ -146,4 +179,8 @@ class PlatformAdapters {
   final SecureStorageProvider storage;
   final NotificationProvider notifications;
   final HealthProvider health;
+
+  /// Audio focus, routes and background playback. The one capability
+  /// Program004 actually creates, which is why the manifests change with it.
+  final AudioSessionPort audioSession;
 }

@@ -4,7 +4,7 @@
 # deliberately absent: listing a processor that processes nothing would make the
 # privacy policy inaccurate in the direction that matters.
 schema_version: 1
-program: Program003
+program: Program004
 as_of: "2026-09-12"
 
 subprocessors:
@@ -37,6 +37,14 @@ not_engaged:
       none engaged. The recommendation engine is deterministic and runs with no
       AI credential; no user data is sent to a model provider.
   - name: text_to_speech_provider
-    status: none engaged. Sessions render text, not synthesised speech.
+    status: >-
+      none engaged. Program004 speaks sessions with device-native synthesis, so
+      no vendor receives anything. A server-side renderer exists as a port with
+      no cloud adapter behind it; if one is ever added, it becomes a
+      subprocessor entry at that point and not before. Note separately that the
+      Android system TTS engine may itself synthesise over the network: that is
+      an OS behaviour outside the app's control and unobservable to it, which
+      is why it is disclosed in the privacy policy rather than listed here as
+      something we engaged.
   - name: email_or_push_provider
     status: none engaged. No account, no email, no push notifications in V1.

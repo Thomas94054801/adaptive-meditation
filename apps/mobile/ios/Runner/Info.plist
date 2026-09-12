@@ -47,6 +47,13 @@
 			</array>
 		</dict>
 	</dict>
+	<!-- Program004: guidance continues while the screen is locked. "audio" is
+	     the only background mode declared, and it is declared because the player
+	     actually plays audio in the background. -->
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>audio</string>
+	</array>
 	<key>UIApplicationSupportsIndirectInputEvents</key>
 	<true/>
 	<key>UILaunchStoryboardName</key>

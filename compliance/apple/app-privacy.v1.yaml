@@ -111,6 +111,22 @@ data_types:
     deletable: true
     retention: until user deletion
 
+  - apple_category: Usage Data
+    apple_subtype: Product Interaction
+    inventory_ref: v1.wellness.playback_journal
+    collected: true
+    linked_to_identity: true
+    used_for_tracking: false
+    purposes: [App Functionality, Analytics]
+    shared_with_third_parties: false
+    deletable: true
+    retention: until user deletion
+    note: >-
+      What happened during a session: segment reached, paused, interrupted,
+      completed. Used to resume a session the app was killed during and to
+      measure how much of a session actually ran. No audio and no transcript is
+      recorded; nothing leaves the backend.
+
   - apple_category: Diagnostics
     apple_subtype: Crash Data
     inventory_ref: null

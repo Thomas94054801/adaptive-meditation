@@ -270,3 +270,52 @@ def test_no_sensitive_value_reaches_the_logs(
     assert secret_note not in logged, "a free-text note reached the logs"
     assert guest not in logged, "the guest identifier reached the logs"
     client.delete("/v1/me/data", headers=headers)
+
+
+def _policy_text(client: TestClient) -> str:
+    """The policy with its line wrapping removed.
+
+    The source wraps at a sensible column, so a phrase a reader sees as one
+    sentence is split across lines in the markup. Asserting on the rendered
+    words rather than on the source layout keeps these tests about content.
+    """
+    return " ".join(client.get("/privacy").text.split()).lower()
+
+
+def test_the_policy_discloses_what_program004_actually_does(client: TestClient) -> None:
+    """Three facts Program004 creates, each stated on the page a user can read.
+
+    A capability the manifests declare and the policy does not mention is the
+    kind of gap store review finds, and the kind a user is entitled to be
+    annoyed about.
+    """
+    body = _policy_text(client)
+
+    # Background playback, and what it does not do.
+    assert "playing in the background" in body
+    assert "collects nothing" in body
+
+    # The Android OS-level TTS behaviour we cannot observe. Disclosed rather
+    # than glossed, because "works offline" would be a claim we cannot support.
+    assert "text-to-speech" in body
+    assert "over the network" in body
+    assert "outside this app" in body
+
+    # The headphone rule, stated as the privacy behaviour it is.
+    assert "headphones disconnect" in body
+
+
+def test_the_policy_still_denies_recording_anything(client: TestClient) -> None:
+    """Speaking is not listening, and the policy has to be unambiguous."""
+    body = _policy_text(client)
+    assert "the app speaks; it never listens." in body
+    assert "no camera or microphone access" in body
+
+
+def test_the_policy_says_no_identity_reaches_a_speech_service(
+    client: TestClient,
+) -> None:
+    """The claim the render-request check enforces, written where users see it."""
+    body = _policy_text(client)
+    assert "no identifier, no session, no history and nothing you have typed" in body
+    assert "speech service" in body

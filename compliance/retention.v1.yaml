@@ -3,7 +3,7 @@
 # Short by construction. Nothing is retained "in case it is useful later": each
 # entry states what ends the retention and why the period is what it is.
 schema_version: 1
-program: Program003
+program: Program004
 as_of: "2026-09-12"
 
 retention:
@@ -26,6 +26,36 @@ retention:
   session_feedback:
     retained_until: user deletion, by cascade
     automatic_expiry: none
+
+  session_events:
+    retained_until: user deletion, by cascade
+    automatic_expiry: none
+    rationale: >-
+      The playback journal. Append-only so it cannot be rewritten, which is a
+      different property from being undeletable: the rows go with the guest like
+      everything else.
+
+  session_definitions:
+    retained_until: indefinite
+    automatic_expiry: none
+    guest_linked: false
+    rationale: >-
+      The frozen guidance text a session used, shared by every session that used
+      it and containing nothing personal. It outlives any one guest because
+      deleting it would make other people's recorded sessions unreadable, and
+      because there is nothing in it to delete.
+
+  audio_renders:
+    retained_until: indefinite on the server; 90 days without a hit on the device
+    automatic_expiry: >-
+      device cache only - LRU above a 150 MB soft cap, and entries unused for 90
+      days dropped
+    guest_linked: false
+    rationale: >-
+      Measured audio for product-authored text, addressed by content. It records
+      which content was rendered, never who heard it, so there is no personal
+      data to expire. The device-side limits exist to bound disk use, not to
+      satisfy a privacy requirement.
 
   recommendation_candidates:
     retained_until: user deletion, by cascade

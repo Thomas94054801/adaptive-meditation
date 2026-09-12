@@ -95,6 +95,18 @@ data_types:
     encrypted_in_transit: true
     deletion_supported: true
 
+  - play_category: App activity
+    play_type: App interactions
+    inventory_ref: v1.wellness.playback_journal
+    collected: true
+    shared: false
+    ephemeral: false
+    required: true
+    optional: false
+    purposes: [App functionality, Analytics]
+    encrypted_in_transit: true
+    deletion_supported: true
+
 not_collected:
   # Play requires a positive answer for each category. These are declared absent
   # explicitly rather than left blank.
