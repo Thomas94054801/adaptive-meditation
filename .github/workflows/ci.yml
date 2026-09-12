@@ -150,6 +150,10 @@ jobs:
       - name: Performance budgets
         working-directory: backend
         env:
+          # Both, and deliberately: alembic reads DATABASE_URL while the
+          # benchmark reads TEST_DATABASE_URL. Setting only one lets alembic
+          # fall through to its default database, which does not exist here.
+          DATABASE_URL: ${{ env.TEST_DATABASE_URL }}
           TEST_DATABASE_URL: ${{ env.TEST_DATABASE_URL }}
         run: |
           # A shared CI runner is not a benchmark environment, so these numbers
