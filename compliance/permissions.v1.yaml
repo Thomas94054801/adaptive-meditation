@@ -50,6 +50,20 @@ platform_permissions:
       capability and is declared below; it does not grant background execution
       for anything other than playing the session that is already running.
     deferred_to: null
+  network_state:
+    requested: true
+    contributed_by: ExoPlayer, transitively through just_audio
+    used_by_this_app: false
+    rationale: >-
+      Present in the merged Android manifest only; nothing in this repository
+      requests it and no plugin's own manifest declares it. This app never
+      gives the player a network source - playback URIs are verified local
+      files and bundled assets - so no path this app enables reads it. A
+      normal, non-dangerous permission: no prompt, no data access, no store
+      data-safety consequence. Stripping it with tools:node="remove" is
+      deferred until a device exists to verify ExoPlayer's initialisation
+      does not read ConnectivityManager.
+    deferred_to: null
   background_audio:
     requested: true
     rationale: >-

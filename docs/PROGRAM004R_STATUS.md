@@ -106,11 +106,15 @@ DurableStore                                 ← checkpoints + outbox, quota-bou
     `setAudioSources` with `preload: false`.
 13. **`describe()` was gated on `Platform.isAndroid`** — untestable off-device
     for no benefit, since failure already fell through to the same default.
-14. **Undeclared SDKs** — the compliance gate failed until the inventory carried
+14. **A transitive permission no source manifest showed** —
+    `ACCESS_NETWORK_STATE` from ExoPlayer, found by the merged-manifest audit
+    in CI. Declared with attribution; see "Not done" for why it is not yet
+    stripped.
+15. **Undeclared SDKs** — the compliance gate failed until the inventory carried
     all six packages with their enabled network paths.
-15. **A vacuous assertion** — `assert "." not in x.replace(".", "", 0) or True`
+16. **A vacuous assertion** — `assert "." not in x.replace(".", "", 0) or True`
     in my own float test. Replaced with a check on the canonical string.
-16. **A wrong test count** in a commit message (559 for 557), amended.
+17. **A wrong test count** in a commit message (559 for 557), amended.
 
 ## G6
 
@@ -163,4 +167,13 @@ evidence path in `acceptance.v1.json`.
 5. **Every device-side budget is NOT_RUN.** No workstation figure is
    substituted for a device figure.
 6. **The release gate is not yet split** into the five axes A8 requires.
-7. **No OCI deployment**, no store upload, no signing, no merge.
+7. **`ACCESS_NETWORK_STATE` is declared rather than stripped.** The merged
+   manifest audit found it contributed transitively by ExoPlayer through
+   `just_audio` — nothing in this repository requests it and no plugin's own
+   manifest declares it, which is exactly the case only a merged-manifest audit
+   can catch. This app never gives the player a network source, so no enabled
+   path reads it. Removing it with `tools:node="remove"` is the right end state
+   and is deferred: ExoPlayer's network-type observer reads `ConnectivityManager`
+   during initialisation on some versions, and stripping a permission a media
+   engine may read is not a change to make with no device to verify it on.
+8. **No OCI deployment**, no store upload, no signing, no merge.
