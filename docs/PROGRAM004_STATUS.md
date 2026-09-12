@@ -120,7 +120,7 @@ validation rather than at runtime.
 ### Backend
 
 ```
-505 tests, exit 0, PostgreSQL 16.15
+523 tests, exit 0, PostgreSQL 16.15
 ruff check . && ruff format --check .   clean
 mypy                                    clean, 69 source files
 ```
@@ -240,6 +240,37 @@ None of those facts exists in the code, so none is declared. The Android system
 TTS engine may itself synthesise over the network; that is an OS behaviour
 outside the app, and it is disclosed in the privacy policy rather than listed as
 a subprocessor we engaged.
+
+## End-to-end and failure injection
+
+`tests/test_program004_e2e.py` walks the real HTTP surface rather than calling
+inwards, because the properties worth proving are about layers agreeing with
+each other.
+
+The journey: check-in to feedback with a typed plan; Program001's golden case
+(`overthinking`, `mental_activity=9`, `stress=8` to `body_awareness`) still
+holding on the Program004 path; the same intent producing the same `plan_hash`
+across two independent sessions; a completed session reconstructible from its
+own records; and two guests never seeing each other across every new surface.
+
+The failure injection matters more. An app that works when everything works is
+not the interesting case:
+
+| Injected | Asserted |
+|----------|----------|
+| Client dies mid-playback | Journal holds the last boundary; resume is not mid-utterance |
+| Every command retried once | Each applies once; the journal has one row per command |
+| Event batch sent three times | Thirty events stay thirty |
+| Commands arriving shuffled | Later wins, earlier drop, run stays coherent |
+| Illegal transition | 409, and the run is untouched |
+| Render unresolvable | `failed` then `recover` then `playing` — not a lost session |
+| Guest deleted mid-session | Everything gone; a later command is 404, not 500 |
+| No AI key configured | Service starts and recommends |
+| Every offered duration (3/5/10/15/20 min) | A playable plan with speech in it |
+
+One assertion there is worth naming: a completed session's journal is checked to
+contain **none** of the spoken text. The words live in the frozen definition,
+which is not guest-linked; the journal records what happened, not what was said.
 
 ## Known gaps
 
