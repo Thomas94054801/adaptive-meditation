@@ -3,7 +3,7 @@
   "schema_version": 1,
   "note": "Evidence for the Program004R candidate. Every row's result is what was actually observed on the code SHA below. Rows that need hardware this environment does not have are NOT_RUN with the reason, never inferred from a lower tier.",
   "candidate": {
-    "code_sha": "f9b85cb87e327fe6e6b874bf3c4b38f5fbfb61b6",
+    "code_sha": "a95c5d79a75c6bbdbe38365238e7c74088549ab3",
     "branch": "program004r/real-audio-durable-playback",
     "sdd_amendment_sha": "020afe43958212dade3cde8ad4c928e6ac6a423f",
     "reviewed_sdd_sha": "dc93e848304e8e15156a64e56d8cebb7e1b8b132",
@@ -14,7 +14,8 @@
     "closeout_sdd_sha": "ab798d1847eee12ac127ea3b99f89fbbc8fdaac8",
     "slice_a_sha": "c995f56",
     "slice_b_sha": "f9b85cb",
-    "local_db_schema_version": 2
+    "local_db_schema_version": 2,
+    "closure_note": "This is the docs-and-evidence closure commit. Its CI runs are recorded below and cover it directly, so no artifact references a commit that did not exist when it was written."
   },
   "environments": {
     "local": {
@@ -31,22 +32,46 @@
       "workflow": "CI",
       "runs": [
         {
-          "run_id": 34702361731,
-          "event": "pull_request",
-          "checkout_sha": "synthetic merge of f9b85cb into its base",
+          "run_id": 34702737584,
+          "event": "push",
+          "checkout_sha": "a95c5d79a75c6bbdbe38365238e7c74088549ab3",
+          "note": "the branch head itself",
           "conclusion": "success",
           "jobs": 6,
+          "backend_tests": "563 passed, 1 warning",
+          "flutter_tests": "217 tests passed",
+          "android_bundle": "53.8MB"
+        },
+        {
+          "run_id": 34702739795,
+          "event": "pull_request",
+          "checkout_sha": "synthetic merge of a95c5d7 into program004/core-adaptive-meditation-sdd",
+          "note": "a different tree from the branch head; reported separately, never conflated",
+          "conclusion": "success",
+          "jobs": 6
+        },
+        {
+          "run_id": 34702361731,
+          "event": "pull_request",
+          "checkout_sha": "synthetic merge of f9b85cb",
+          "conclusion": "success",
           "android_bundle": "53.8MB",
-          "note": "a pull_request run checks a synthetic merge tree, not the branch head"
+          "note": "first run after the implementation; the after figure for the size delta"
         },
         {
           "run_id": 34699673264,
           "event": "push",
           "checkout_sha": "ab798d1847eee12ac127ea3b99f89fbbc8fdaac8",
           "conclusion": "success",
-          "jobs": 6,
           "android_bundle": "53.6MB",
-          "note": "the pre-implementation baseline for the bundle-size delta"
+          "note": "pre-implementation baseline for the size delta"
+        },
+        {
+          "run_id": 34697888772,
+          "event": "push",
+          "checkout_sha": "75a35e0d9005c0b969c1cd7fd64fd1d098b59cf8",
+          "conclusion": "failure",
+          "note": "Kept deliberately: the merged-manifest audit catching ACCESS_NETWORK_STATE from ExoPlayer. Recording only green runs would hide the finding that gate exists to produce."
         }
       ],
       "pull_request_run": "A pull_request event run checks a synthetic merge of the head into main, which is a different tree from the branch head. Reported separately from the push run rather than conflated.",
@@ -325,8 +350,8 @@
       "reported": "53.6MB"
     },
     "after": {
-      "sha": "f9b85cb87e327fe6e6b874bf3c4b38f5fbfb61b6",
-      "run_id": 34702361731,
+      "sha": "a95c5d79a75c6bbdbe38365238e7c74088549ab3",
+      "run_id": 34702737584,
       "reported": "53.8MB"
     },
     "delta_reported": "approximately 0.2 MB",
