@@ -117,6 +117,149 @@ class SessionResponse(BaseModel):
     completed_at: datetime | None = None
     recommendation: RecommendationResponse
     plan: SessionPlanResponse
+    plan_v2: SessionPlanV2Response | None = None
+    run_state: str | None = None
+
+
+class TimelineSegmentResponse(BaseModel):
+    """One segment of the executable timeline.
+
+    ``transcript`` is present on every speech segment, so a client can run the
+    whole session as text - which is how a user who cannot use audio completes
+    one, not a degraded fallback.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    kind: str
+    id: str
+    text: str | None = None
+    transcript: str | None = None
+    estimated_ms: int | None = None
+    render_key: str | None = None
+    target_ms: int | None = None
+    min_ms: int | None = None
+    elastic: bool | None = None
+    bell_id: str | None = None
+    duration_ms: int | None = None
+    asset_key: str | None = None
+    marker_id: str | None = None
+
+
+class SessionPlanV2Response(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    schema_version: int
+    planner_version: str
+    definition_id: str
+    plan_hash: str
+    practice_id: str
+    protocol_id: str
+    public_title: str
+    locale: str
+    target_total_ms: int
+    minimum_total_ms: int
+    shrinkable_ms: int
+    guidance_density: float
+    segments: list[TimelineSegmentResponse]
+
+
+class PlaybackCommandRequest(BaseModel):
+    """A state-changing playback command.
+
+    ``command_id`` makes a retry idempotent and ``sequence`` makes an
+    out-of-order arrival droppable, which is what rapid play/pause taps on a
+    flaky connection actually look like.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    command: Literal[
+        "prepare",
+        "resolved",
+        "unresolvable",
+        "start",
+        "pause",
+        "resume",
+        "interrupt",
+        "interruption_ended",
+        "complete",
+        "abandon",
+        "fail",
+        "recover",
+    ]
+    command_id: str = Field(min_length=1, max_length=64)
+    sequence: Annotated[int, Field(ge=0)]
+    """One counter per session, shared with the event journal, strictly increasing."""
+    elapsed_ms: Annotated[int, Field(ge=0)] = 0
+    segment_id: Annotated[str, Field(max_length=64)] | None = None
+
+
+class PlaybackStateResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    session_id: uuid.UUID
+    run_state: str
+    elapsed_ms: int
+    last_segment_id: str | None
+    command_sequence: int
+    applied: bool
+    """False when the command was a replay or arrived out of order."""
+    resume_segment_id: str | None = None
+    """Where a client resumes after process death. Never mid-utterance."""
+    resume_offset_ms: int = 0
+
+
+SessionEventType = Literal[
+    "session_created",
+    "session_prepared",
+    "session_started",
+    "segment_started",
+    "segment_completed",
+    "playback_paused",
+    "playback_resumed",
+    "playback_interrupted",
+    "playback_focus_regained",
+    "route_changed",
+    "session_completed",
+    "session_abandoned",
+    "render_cache_hit",
+    "render_cache_miss",
+    "render_failure",
+    "timeline_compressed",
+    "timeline_drift_exceeded",
+    "silent_mode_used",
+    "timeline_extended",
+    "playback_failed",
+]
+
+
+class SessionEventRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    sequence: Annotated[int, Field(ge=0)]
+    event_type: SessionEventType
+    """Closed set. An unrecognised type is a client bug, not a row to store."""
+    segment_id: Annotated[str, Field(max_length=64)] | None = None
+    elapsed_ms: Annotated[int, Field(ge=0)] = 0
+    command_id: Annotated[str, Field(max_length=64)] | None = None
+    detail: dict[str, Any] | None = None
+
+
+class SessionEventBatchRequest(BaseModel):
+    """Events batch so a session does not make a round trip per segment."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    events: Annotated[list[SessionEventRequest], Field(min_length=1, max_length=200)]
+
+
+class SessionEventBatchResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    accepted: int
+    duplicates: int
+    """Replayed sequences, recorded once. A retry is safe, not an error."""
 
 
 class SessionFeedbackRequest(BaseModel):
@@ -200,6 +343,8 @@ class GuestExportResponse(BaseModel):
     feedback: list[dict[str, Any]]
     experiment_assignments: list[dict[str, Any]]
     experiment_exposures: list[dict[str, Any]]
+    playback_events: list[dict[str, Any]]
+    """The playback journal. A new table the export omits is a privacy defect."""
 
 
 class HealthResponse(BaseModel):

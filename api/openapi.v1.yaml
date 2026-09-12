@@ -273,6 +273,12 @@ components:
           format: uuid
           title: Guest Id
           type: string
+        playback_events:
+          items:
+            additionalProperties: true
+            type: object
+          title: Playback Events
+          type: array
         recommendations:
           items:
             additionalProperties: true
@@ -293,6 +299,7 @@ components:
       - feedback
       - experiment_assignments
       - experiment_exposures
+      - playback_events
       title: GuestExportResponse
       type: object
     HTTPValidationError:
@@ -346,6 +353,101 @@ components:
       - protocols_loaded
       - ai_provider_configured
       title: HealthResponse
+      type: object
+    PlaybackCommandRequest:
+      additionalProperties: false
+      description: 'A state-changing playback command.
+
+
+        ``command_id`` makes a retry idempotent and ``sequence`` makes an
+
+        out-of-order arrival droppable, which is what rapid play/pause taps on a
+
+        flaky connection actually look like.'
+      properties:
+        command:
+          enum:
+          - prepare
+          - resolved
+          - unresolvable
+          - start
+          - pause
+          - resume
+          - interrupt
+          - interruption_ended
+          - complete
+          - abandon
+          - fail
+          - recover
+          title: Command
+          type: string
+        command_id:
+          maxLength: 64
+          minLength: 1
+          title: Command Id
+          type: string
+        elapsed_ms:
+          default: 0
+          minimum: 0.0
+          title: Elapsed Ms
+          type: integer
+        segment_id:
+          anyOf:
+          - maxLength: 64
+            type: string
+          - type: 'null'
+          title: Segment Id
+        sequence:
+          minimum: 0.0
+          title: Sequence
+          type: integer
+      required:
+      - command
+      - command_id
+      - sequence
+      title: PlaybackCommandRequest
+      type: object
+    PlaybackStateResponse:
+      additionalProperties: false
+      properties:
+        applied:
+          title: Applied
+          type: boolean
+        command_sequence:
+          title: Command Sequence
+          type: integer
+        elapsed_ms:
+          title: Elapsed Ms
+          type: integer
+        last_segment_id:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Last Segment Id
+        resume_offset_ms:
+          default: 0
+          title: Resume Offset Ms
+          type: integer
+        resume_segment_id:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Resume Segment Id
+        run_state:
+          title: Run State
+          type: string
+        session_id:
+          format: uuid
+          title: Session Id
+          type: string
+      required:
+      - session_id
+      - run_state
+      - elapsed_ms
+      - last_segment_id
+      - command_sequence
+      - applied
+      title: PlaybackStateResponse
       type: object
     Recommendation:
       additionalProperties: false
@@ -472,6 +574,94 @@ components:
       required:
       - check_in_id
       title: SessionCreateRequest
+      type: object
+    SessionEventBatchRequest:
+      additionalProperties: false
+      description: Events batch so a session does not make a round trip per segment.
+      properties:
+        events:
+          items:
+            $ref: '#/components/schemas/SessionEventRequest'
+          maxItems: 200
+          minItems: 1
+          title: Events
+          type: array
+      required:
+      - events
+      title: SessionEventBatchRequest
+      type: object
+    SessionEventBatchResponse:
+      additionalProperties: false
+      properties:
+        accepted:
+          title: Accepted
+          type: integer
+        duplicates:
+          title: Duplicates
+          type: integer
+      required:
+      - accepted
+      - duplicates
+      title: SessionEventBatchResponse
+      type: object
+    SessionEventRequest:
+      additionalProperties: false
+      properties:
+        command_id:
+          anyOf:
+          - maxLength: 64
+            type: string
+          - type: 'null'
+          title: Command Id
+        detail:
+          anyOf:
+          - additionalProperties: true
+            type: object
+          - type: 'null'
+          title: Detail
+        elapsed_ms:
+          default: 0
+          minimum: 0.0
+          title: Elapsed Ms
+          type: integer
+        event_type:
+          enum:
+          - session_created
+          - session_prepared
+          - session_started
+          - segment_started
+          - segment_completed
+          - playback_paused
+          - playback_resumed
+          - playback_interrupted
+          - playback_focus_regained
+          - route_changed
+          - session_completed
+          - session_abandoned
+          - render_cache_hit
+          - render_cache_miss
+          - render_failure
+          - timeline_compressed
+          - timeline_drift_exceeded
+          - silent_mode_used
+          - timeline_extended
+          - playback_failed
+          title: Event Type
+          type: string
+        segment_id:
+          anyOf:
+          - maxLength: 64
+            type: string
+          - type: 'null'
+          title: Segment Id
+        sequence:
+          minimum: 0.0
+          title: Sequence
+          type: integer
+      required:
+      - sequence
+      - event_type
+      title: SessionEventRequest
       type: object
     SessionFeedbackRequest:
       additionalProperties: false
@@ -609,6 +799,66 @@ components:
       - stages
       title: SessionPlanResponse
       type: object
+    SessionPlanV2Response:
+      additionalProperties: false
+      properties:
+        definition_id:
+          title: Definition Id
+          type: string
+        guidance_density:
+          title: Guidance Density
+          type: number
+        locale:
+          title: Locale
+          type: string
+        minimum_total_ms:
+          title: Minimum Total Ms
+          type: integer
+        plan_hash:
+          title: Plan Hash
+          type: string
+        planner_version:
+          title: Planner Version
+          type: string
+        practice_id:
+          title: Practice Id
+          type: string
+        protocol_id:
+          title: Protocol Id
+          type: string
+        public_title:
+          title: Public Title
+          type: string
+        schema_version:
+          title: Schema Version
+          type: integer
+        segments:
+          items:
+            $ref: '#/components/schemas/TimelineSegmentResponse'
+          title: Segments
+          type: array
+        shrinkable_ms:
+          title: Shrinkable Ms
+          type: integer
+        target_total_ms:
+          title: Target Total Ms
+          type: integer
+      required:
+      - schema_version
+      - planner_version
+      - definition_id
+      - plan_hash
+      - practice_id
+      - protocol_id
+      - public_title
+      - locale
+      - target_total_ms
+      - minimum_total_ms
+      - shrinkable_ms
+      - guidance_density
+      - segments
+      title: SessionPlanV2Response
+      type: object
     SessionResponse:
       additionalProperties: false
       properties:
@@ -632,8 +882,17 @@ components:
           type: string
         plan:
           $ref: '#/components/schemas/SessionPlanResponse'
+        plan_v2:
+          anyOf:
+          - $ref: '#/components/schemas/SessionPlanV2Response'
+          - type: 'null'
         recommendation:
           $ref: '#/components/schemas/RecommendationResponse'
+        run_state:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Run State
         started_at:
           anyOf:
           - format: date-time
@@ -742,6 +1001,83 @@ components:
       - rule_set_version
       - outcome_score
       title: SessionSummary
+      type: object
+    TimelineSegmentResponse:
+      additionalProperties: false
+      description: 'One segment of the executable timeline.
+
+
+        ``transcript`` is present on every speech segment, so a client can run the
+
+        whole session as text - which is how a user who cannot use audio completes
+
+        one, not a degraded fallback.'
+      properties:
+        asset_key:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Asset Key
+        bell_id:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Bell Id
+        duration_ms:
+          anyOf:
+          - type: integer
+          - type: 'null'
+          title: Duration Ms
+        elastic:
+          anyOf:
+          - type: boolean
+          - type: 'null'
+          title: Elastic
+        estimated_ms:
+          anyOf:
+          - type: integer
+          - type: 'null'
+          title: Estimated Ms
+        id:
+          title: Id
+          type: string
+        kind:
+          title: Kind
+          type: string
+        marker_id:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Marker Id
+        min_ms:
+          anyOf:
+          - type: integer
+          - type: 'null'
+          title: Min Ms
+        render_key:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Render Key
+        target_ms:
+          anyOf:
+          - type: integer
+          - type: 'null'
+          title: Target Ms
+        text:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Text
+        transcript:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Transcript
+      required:
+      - kind
+      - id
+      title: TimelineSegmentResponse
       type: object
     ValidationError:
       properties:
@@ -1222,6 +1558,112 @@ paths:
       summary: This guest's past sessions, newest first
       tags:
       - guest
+  /v1/sessions/{session_id}:
+    get:
+      operationId: getSession
+      parameters:
+      - in: path
+        name: session_id
+        required: true
+        schema:
+          format: uuid
+          title: Session Id
+          type: string
+      - in: header
+        name: X-Guest-Id
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-Guest-Id
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SessionResponse'
+          description: Successful Response
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Guest identity required
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Resource not found
+        '422':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+          description: Validation Error
+      summary: Read a session, including its recovery point
+      tags:
+      - v1
+  /v1/sessions/{session_id}/events:
+    post:
+      description: 'Batched so a session does not make a round trip per segment.
+
+
+        Idempotent per (session, sequence): a client that retries after losing its
+
+        connection re-sends the batch and gets the same journal, not a doubled one.'
+      operationId: appendSessionEvents
+      parameters:
+      - in: path
+        name: session_id
+        required: true
+        schema:
+          format: uuid
+          title: Session Id
+          type: string
+      - in: header
+        name: X-Guest-Id
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-Guest-Id
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SessionEventBatchRequest'
+        required: true
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SessionEventBatchResponse'
+          description: Successful Response
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Guest identity required
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Resource not found
+        '422':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Validation error
+      summary: Append playback events
+      tags:
+      - v1
   /v1/sessions/{session_id}/feedback:
     post:
       operationId: submitSessionFeedback
@@ -1255,6 +1697,122 @@ paths:
                 $ref: '#/components/schemas/ErrorResponse'
           description: Validation error
       summary: Attach before/after feedback to a session
+      tags:
+      - v1
+  /v1/sessions/{session_id}/playback:
+    get:
+      description: What a client asks for after being killed in the background.
+      operationId: getPlaybackState
+      parameters:
+      - in: path
+        name: session_id
+        required: true
+        schema:
+          format: uuid
+          title: Session Id
+          type: string
+      - in: header
+        name: X-Guest-Id
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-Guest-Id
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlaybackStateResponse'
+          description: Successful Response
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Guest identity required
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Resource not found
+        '422':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+          description: Validation Error
+      summary: Read playback state and the recovery point
+      tags:
+      - v1
+    post:
+      description: 'Drive the run state machine.
+
+
+        A replayed sequence, an out-of-order sequence and a command on a finished
+
+        run all return the current state with ``applied=false``. Two things are a
+
+        409: an illegal transition - starting a session that was never prepared -
+
+        and a sequence the journal already holds.'
+      operationId: applyPlaybackCommand
+      parameters:
+      - in: path
+        name: session_id
+        required: true
+        schema:
+          format: uuid
+          title: Session Id
+          type: string
+      - in: header
+        name: X-Guest-Id
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-Guest-Id
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PlaybackCommandRequest'
+        required: true
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlaybackStateResponse'
+          description: Successful Response
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Guest identity required
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Resource not found
+        '409':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Conflicting state
+        '422':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Validation error
+      summary: Apply a playback command
       tags:
       - v1
   /v1/sessions/{session_id}/start:

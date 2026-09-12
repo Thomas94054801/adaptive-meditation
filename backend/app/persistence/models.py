@@ -96,6 +96,11 @@ class Session(Base):
             "status IN ('created', 'started', 'completed', 'abandoned')",
             name="ck_sessions_status",
         ),
+        sa.CheckConstraint(
+            "run_state IS NULL OR run_state IN ('created', 'preparing', 'ready', "
+            "'playing', 'paused', 'completed', 'abandoned', 'failed')",
+            name="ck_sessions_run_state",
+        ),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(sa.Uuid, primary_key=True, default=uuid.uuid4)
@@ -115,6 +120,23 @@ class Session(Base):
     engine_version: Mapped[str | None] = mapped_column(sa.String(8), nullable=True)
     rule_set_version: Mapped[str | None] = mapped_column(sa.String(8), nullable=True, index=True)
     state_fingerprint: Mapped[str | None] = mapped_column(sa.String(64), nullable=True, index=True)
+
+    # Program004: the typed plan and the content it froze. plan_hash makes the
+    # run reproducible; definition_id keeps the exact words addressable after
+    # the knowledge files move on.
+    plan_v2: Mapped[dict[str, object] | None] = mapped_column(JSONType, nullable=True)
+    plan_hash: Mapped[str | None] = mapped_column(sa.String(64), nullable=True, index=True)
+    definition_id: Mapped[str | None] = mapped_column(
+        sa.ForeignKey("session_definitions.id", ondelete="RESTRICT"), nullable=True
+    )
+    run_state: Mapped[str | None] = mapped_column(sa.String(16), nullable=True)
+    last_segment_id: Mapped[str | None] = mapped_column(sa.String(64), nullable=True)
+    elapsed_ms: Mapped[int] = mapped_column(
+        sa.Integer, nullable=False, default=0, server_default="0"
+    )
+    command_sequence: Mapped[int] = mapped_column(
+        sa.Integer, nullable=False, default=0, server_default="0"
+    )
     plan: Mapped[dict[str, object]] = mapped_column(JSONType, nullable=False)
     status: Mapped[str] = mapped_column(sa.String(16), nullable=False, default="created")
     created_at: Mapped[datetime] = mapped_column(
@@ -130,6 +152,7 @@ class Session(Base):
     candidates: Mapped[list[RecommendationCandidate]] = relationship(
         back_populates="session", cascade="all, delete-orphan"
     )
+    events: Mapped[list[SessionEvent]] = relationship(cascade="all, delete-orphan")
 
 
 class SessionFeedback(Base):
@@ -184,6 +207,110 @@ class SessionFeedback(Base):
     outcome_score: Mapped[int | None] = mapped_column(sa.SmallInteger, nullable=True)
 
     session: Mapped[Session] = relationship(back_populates="feedback")
+
+
+# Program004 playback states. "backgrounded" is deliberately absent: audio that
+# stops when the screen locks is not a meditation app, so backgrounding is an
+# environment event, not a playback state.
+SESSION_RUN_STATES = (
+    "created",
+    "preparing",
+    "ready",
+    "playing",
+    "paused",
+    "completed",
+    "abandoned",
+    "failed",
+)
+
+# Section 17.1 of the SDD, verbatim, plus two the accepted SDD corrections
+# require: timeline_extended records the case where elastic silence could not
+# absorb a speech overrun, and playback_failed records the run state of the same
+# name. Anything not in this tuple is refused by both the API and the database.
+SESSION_EVENT_TYPES = (
+    "session_created",
+    "session_prepared",
+    "session_started",
+    "segment_started",
+    "segment_completed",
+    "playback_paused",
+    "playback_resumed",
+    "playback_interrupted",
+    "playback_focus_regained",
+    "route_changed",
+    "session_completed",
+    "session_abandoned",
+    "render_cache_hit",
+    "render_cache_miss",
+    "render_failure",
+    "timeline_compressed",
+    "timeline_drift_exceeded",
+    "silent_mode_used",
+    "timeline_extended",
+    "playback_failed",
+)
+
+
+class SessionDefinitionRow(Base):
+    """Frozen guidance content.
+
+    Not guest-linked. This is the product's own content, so guest deletion must
+    not touch it - an obvious statement that is exactly the sort of thing a
+    cascade gets wrong.
+    """
+
+    __tablename__ = "session_definitions"
+
+    id: Mapped[str] = mapped_column(sa.String(64), primary_key=True)
+    practice_id: Mapped[str] = mapped_column(sa.String(32), nullable=False, index=True)
+    protocol_id: Mapped[str] = mapped_column(sa.String(64), nullable=False)
+    locale: Mapped[str] = mapped_column(sa.String(16), nullable=False)
+    source: Mapped[str] = mapped_column(sa.String(16), nullable=False)
+    version: Mapped[int] = mapped_column(sa.SmallInteger, nullable=False)
+    content: Mapped[dict[str, object]] = mapped_column(JSONType, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        sa.DateTime(timezone=True), nullable=False, server_default=sa.func.current_timestamp()
+    )
+
+
+class SessionEvent(Base):
+    """Append-only playback journal.
+
+    Append-only because a log that can be rewritten is not evidence. The
+    repository exposes only append and read, and the unique (session, sequence)
+    pair is what makes a retried request idempotent rather than duplicating.
+
+    elapsed_ms is monotonic playback position; occurred_at is wall clock for
+    audit. Both are stored because they answer different questions, and
+    conflating them is how "this session lasted three hours" bugs happen.
+    """
+
+    __tablename__ = "session_events"
+    __table_args__ = (
+        sa.UniqueConstraint("session_id", "sequence", name="uq_session_events_sequence"),
+        sa.CheckConstraint("sequence >= 0", name="ck_session_events_sequence"),
+        sa.CheckConstraint("elapsed_ms >= 0", name="ck_session_events_elapsed"),
+        sa.CheckConstraint(
+            "event_type IN (" + ", ".join(f"'{t}'" for t in SESSION_EVENT_TYPES) + ")",
+            name="ck_session_events_type",
+        ),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(sa.Uuid, primary_key=True, default=uuid.uuid4)
+    session_id: Mapped[uuid.UUID] = mapped_column(
+        sa.ForeignKey("sessions.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    sequence: Mapped[int] = mapped_column(sa.Integer, nullable=False)
+    event_type: Mapped[str] = mapped_column(sa.String(32), nullable=False)
+    segment_id: Mapped[str | None] = mapped_column(sa.String(64), nullable=True)
+    elapsed_ms: Mapped[int] = mapped_column(
+        sa.Integer, nullable=False, default=0, server_default="0"
+    )
+    command_id: Mapped[str | None] = mapped_column(sa.String(64), nullable=True, index=True)
+    detail: Mapped[dict[str, object] | None] = mapped_column(JSONType, nullable=True)
+    occurred_at: Mapped[datetime] = mapped_column(
+        sa.DateTime(timezone=True), nullable=False, server_default=sa.func.current_timestamp()
+    )
 
 
 class RecommendationCandidate(Base):

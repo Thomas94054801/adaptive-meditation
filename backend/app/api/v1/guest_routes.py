@@ -21,7 +21,12 @@ from app.api.v1.schemas import (
     SessionHistoryPage,
     SessionSummary,
 )
-from app.persistence.repositories import CheckInRepository, GuestRepository, SessionRepository
+from app.persistence.repositories import (
+    CheckInRepository,
+    GuestRepository,
+    SessionEventRepository,
+    SessionRepository,
+)
 
 router = APIRouter(prefix="/v1", tags=["guest"])
 
@@ -189,6 +194,19 @@ def export_guest_data(guest_id: RequiredGuestDep, db: DbSessionDep) -> GuestExpo
                 "assigned_at": row.assigned_at.isoformat(),
             }
             for row in guests.assignments(guest_id)
+        ],
+        playback_events=[
+            {
+                "session_id": str(row.session_id),
+                "sequence": row.sequence,
+                "event_type": row.event_type,
+                "segment_id": row.segment_id,
+                "elapsed_ms": row.elapsed_ms,
+                "command_id": row.command_id,
+                "detail": row.detail,
+                "occurred_at": row.occurred_at.isoformat(),
+            }
+            for row in SessionEventRepository(db).for_guest(guest_id)
         ],
         # Exposures are exported separately from assignments, for the same
         # reason they are stored separately: they are different facts.

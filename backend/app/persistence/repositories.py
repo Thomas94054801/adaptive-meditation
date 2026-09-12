@@ -19,6 +19,7 @@ from app.domain.recommendation.engine import Recommendation
 from app.domain.recommendation.scoring import RuleOutcome
 from app.domain.session.planner import SessionPlan
 from app.domain.state.models import CheckIn as CheckInModel
+from app.domain.timeline.definition import SessionDefinition
 from app.persistence import models
 
 
@@ -195,6 +196,9 @@ class SessionRepository:
         user_id: uuid.UUID | None = None,
         guest_id: uuid.UUID | None = None,
         outcome: RuleOutcome | None = None,
+        plan_v2: dict[str, object] | None = None,
+        plan_hash: str | None = None,
+        definition_id: str | None = None,
     ) -> models.Session:
         row = models.Session(
             id=uuid.uuid4(),
@@ -210,6 +214,12 @@ class SessionRepository:
             engine_version=recommendation.engine_version,
             rule_set_version=recommendation.rule_set_version,
             state_fingerprint=recommendation.state_fingerprint or None,
+            plan_v2=plan_v2,
+            plan_hash=plan_hash,
+            definition_id=definition_id,
+            run_state="created",
+            elapsed_ms=0,
+            command_sequence=0,
         )
         self._session.add(row)
         self._session.flush()
@@ -318,5 +328,123 @@ class SessionRepository:
             select(models.RecommendationCandidate)
             .where(models.RecommendationCandidate.session_id == session_id)
             .order_by(models.RecommendationCandidate.rank)
+        )
+        return list(self._session.execute(stmt).scalars())
+
+
+class SessionDefinitionRepository:
+    """Frozen guidance content.
+
+    Write-once by construction: a definition is addressed by the hash of its own
+    content, so "updating" one is a contradiction - different content is a
+    different id.
+    """
+
+    def __init__(self, session: OrmSession) -> None:
+        self._session = session
+
+    def ensure(self, definition: SessionDefinition) -> models.SessionDefinitionRow:
+        existing = self._session.get(models.SessionDefinitionRow, definition.definition_id)
+        if existing is not None:
+            return existing
+        row = models.SessionDefinitionRow(
+            id=definition.definition_id,
+            practice_id=definition.practice_id,
+            protocol_id=definition.protocol_id,
+            locale=definition.locale,
+            source=definition.source.value,
+            version=definition.version,
+            content=definition.as_dict(),
+            created_at=utcnow(),
+        )
+        self._session.add(row)
+        self._session.flush()
+        return row
+
+    def get(self, definition_id: str) -> SessionDefinition | None:
+        row = self._session.get(models.SessionDefinitionRow, definition_id)
+        if row is None:
+            return None
+        return SessionDefinition.from_dict(dict(row.content))
+
+
+class SessionEventRepository:
+    """Append-only playback journal.
+
+    Only ``append`` and ``read`` exist. There is deliberately no update and no
+    delete: a log that can be rewritten is not evidence, and the only way rows
+    leave is the guest-deletion cascade.
+    """
+
+    def __init__(self, session: OrmSession) -> None:
+        self._session = session
+
+    def append(
+        self,
+        *,
+        session_id: uuid.UUID,
+        sequence: int,
+        event_type: str,
+        segment_id: str | None = None,
+        elapsed_ms: int = 0,
+        command_id: str | None = None,
+        detail: dict[str, object] | None = None,
+    ) -> tuple[models.SessionEvent, bool]:
+        """Append one event. Returns (row, created).
+
+        Idempotent on (session, sequence): a retried request finds the existing
+        row rather than duplicating it, which is what makes the client free to
+        retry after a dropped connection.
+        """
+        stmt = select(models.SessionEvent).where(
+            models.SessionEvent.session_id == session_id,
+            models.SessionEvent.sequence == sequence,
+        )
+        existing = self._session.execute(stmt).scalar_one_or_none()
+        if existing is not None:
+            return existing, False
+
+        row = models.SessionEvent(
+            id=uuid.uuid4(),
+            session_id=session_id,
+            sequence=sequence,
+            event_type=event_type,
+            segment_id=segment_id,
+            elapsed_ms=max(0, elapsed_ms),
+            command_id=command_id,
+            detail=detail,
+            occurred_at=utcnow(),
+        )
+        self._session.add(row)
+        self._session.flush()
+        return row, True
+
+    def read(self, session_id: uuid.UUID) -> list[models.SessionEvent]:
+        stmt = (
+            select(models.SessionEvent)
+            .where(models.SessionEvent.session_id == session_id)
+            .order_by(models.SessionEvent.sequence)
+        )
+        return list(self._session.execute(stmt).scalars())
+
+    def highest_sequence(self, session_id: uuid.UUID) -> int:
+        stmt = select(sa.func.max(models.SessionEvent.sequence)).where(
+            models.SessionEvent.session_id == session_id
+        )
+        return int(self._session.execute(stmt).scalar() or -1)
+
+    def for_guest(self, guest_id: uuid.UUID) -> list[models.SessionEvent]:
+        """Every event for one guest, for the export.
+
+        Bounded by that one person's own practice: roughly twenty rows per
+        session, so a heavy user with a thousand sessions is about twenty
+        thousand small rows. Unbounded by design, like the rest of the export -
+        an export that silently stops early is not an export.
+        """
+        session_ids = select(models.Session.id).where(models.Session.guest_id == guest_id)
+        stmt = (
+            select(models.SessionEvent)
+            .where(models.SessionEvent.session_id.in_(session_ids))
+            .order_by(models.SessionEvent.session_id, models.SessionEvent.sequence)
         )
         return list(self._session.execute(stmt).scalars())

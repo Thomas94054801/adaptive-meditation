@@ -51,6 +51,10 @@ def test_required_paths_and_operations(committed_spec: dict[str, Any]) -> None:
         ("/v1/sessions", "post"): "createSession",
         ("/v1/sessions/{session_id}/start", "post"): "startSession",
         ("/v1/sessions/{session_id}/feedback", "post"): "submitSessionFeedback",
+        ("/v1/sessions/{session_id}", "get"): "getSession",
+        ("/v1/sessions/{session_id}/playback", "post"): "applyPlaybackCommand",
+        ("/v1/sessions/{session_id}/playback", "get"): "getPlaybackState",
+        ("/v1/sessions/{session_id}/events", "post"): "appendSessionEvents",
         ("/v1/recommendations/candidates", "post"): "createRecommendationCandidates",
         ("/v1/sessions/history", "get"): "listSessionHistory",
         ("/v1/me/export", "get"): "exportGuestData",
@@ -74,6 +78,57 @@ def test_response_codes_match_the_contract(committed_spec: dict[str, Any]) -> No
     assert "204" in paths["/v1/sessions/{session_id}/feedback"]["post"]["responses"]
     assert "404" in paths["/v1/sessions/{session_id}/feedback"]["post"]["responses"]
     assert "409" in paths["/v1/sessions"]["post"]["responses"]
+
+
+def test_playback_contract_declares_its_idempotency_fields(
+    committed_spec: dict[str, Any],
+) -> None:
+    """A client cannot retry safely if the contract does not promise it can."""
+    schema = committed_spec["components"]["schemas"]["PlaybackCommandRequest"]
+    assert set(schema["required"]) >= {"command", "command_id", "sequence"}
+    assert schema["additionalProperties"] is False
+    commands = set(_enum_values(committed_spec, schema["properties"]["command"]))
+    assert commands == {
+        "prepare",
+        "resolved",
+        "unresolvable",
+        "start",
+        "pause",
+        "resume",
+        "interrupt",
+        "interruption_ended",
+        "complete",
+        "abandon",
+        "fail",
+        "recover",
+    }
+    state = committed_spec["components"]["schemas"]["PlaybackStateResponse"]
+    for field in ("run_state", "applied", "resume_segment_id", "resume_offset_ms"):
+        assert field in state["properties"], field
+
+    paths = committed_spec["paths"]
+    playback = paths["/v1/sessions/{session_id}/playback"]["post"]["responses"]
+    # A conflict is a real outcome of an illegal transition; the contract says so.
+    assert "409" in playback
+    assert "404" in playback
+
+
+def test_the_event_journal_contract_is_a_closed_set(committed_spec: dict[str, Any]) -> None:
+    schema = committed_spec["components"]["schemas"]["SessionEventRequest"]
+    types = set(_enum_values(committed_spec, schema["properties"]["event_type"]))
+    assert "segment_started" in types
+    assert "vibes" not in types
+    batch = committed_spec["components"]["schemas"]["SessionEventBatchRequest"]
+    # Bounded: an unbounded batch is an unbounded write amplification.
+    assert batch["properties"]["events"]["maxItems"] == 200
+
+
+def test_the_export_contract_includes_the_playback_journal(
+    committed_spec: dict[str, Any],
+) -> None:
+    """A table the export omits is a privacy defect, so the contract pins it."""
+    schema = committed_spec["components"]["schemas"]["GuestExportResponse"]
+    assert "playback_events" in schema["properties"]
 
 
 def test_check_in_schema_keeps_its_declared_bounds(committed_spec: dict[str, Any]) -> None:
