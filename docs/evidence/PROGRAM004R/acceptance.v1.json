@@ -24,7 +24,27 @@
     },
     "ci": {
       "kind": "GitHub hosted runners",
-      "note": "Filled in from the run below."
+      "workflow": "CI",
+      "runs": [
+        {
+          "run_id": 34698274421,
+          "event": "push",
+          "checkout_sha": "420a5e97c8a810e74b20db8599394588b4d41d62",
+          "note": "a push run checks the branch head itself",
+          "conclusion": "success",
+          "jobs": 6,
+          "backend_tests": "557 passed, 1 warning",
+          "flutter_tests": "194 tests passed"
+        },
+        {
+          "run_id": 34697888772,
+          "event": "push",
+          "checkout_sha": "75a35e0d9005c0b969c1cd7fd64fd1d098b59cf8",
+          "conclusion": "failure",
+          "note": "Kept deliberately. The merged-manifest audit failed on ACCESS_NETWORK_STATE contributed transitively by ExoPlayer through just_audio - a permission no source manifest in this repository declares. Recording only the green run would hide the finding that gate exists to produce."
+        }
+      ],
+      "pull_request_run": "A pull_request event run checks a synthetic merge of the head into main, which is a different tree from the branch head. Reported separately from the push run rather than conflated."
     },
     "device": {
       "kind": "none available",
@@ -237,12 +257,12 @@
   "dispositions": {
     "SDD": "ACCEPTED_WITH_BINDING_AMENDMENTS_APPLIED",
     "IMPLEMENTATION": "PARTIAL",
-    "CI": "PENDING",
+    "CI": "PASS",
     "NATIVE_INTEGRATION": "NOT_RUN",
     "ANDROID_DEVICE": "NOT_RUN",
     "IOS_DEVICE": "NOT_RUN",
     "HUMAN_LISTENING": "NOT_RUN",
-    "REMOTE": "PENDING",
+    "REMOTE": "PUSH_VERIFIED_PR_OPEN",
     "STORE_RELEASE": "BLOCKED"
   },
   "g6": {
