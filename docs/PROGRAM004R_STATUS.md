@@ -9,20 +9,49 @@ Machine-readable evidence: `docs/evidence/PROGRAM004R/acceptance.v1.json`
 ## Disposition
 
 ```
-SDD                = ACCEPTED_WITH_BINDING_AMENDMENTS_APPLIED
-IMPLEMENTATION     = PARTIAL
-NATIVE_INTEGRATION = NOT_RUN
-ANDROID_DEVICE     = NOT_RUN
-IOS_DEVICE         = NOT_RUN
-HUMAN_LISTENING    = NOT_RUN
-STORE_RELEASE      = BLOCKED
+SDD                       = ACCEPTED_WITH_BINDING_AMENDMENTS_APPLIED
+IMPLEMENTATION            = DEVICE_INDEPENDENT_COMPLETE
+CI                        = PASS
+NATIVE_INTEGRATION        = NOT_RUN
+ANDROID_DEVICE            = NOT_RUN
+IOS_DEVICE                = NOT_RUN
+HUMAN_LISTENING           = NOT_RUN
+CODE_MERGE_READINESS      = READY
+STORE_RELEASE_READINESS   = BLOCKED
 ```
 
-**IMPLEMENTATION is PARTIAL, not COMPLETE.** The production audio path, the
-full-prepare readiness rule and the durable store all exist and are tested.
-What is missing is stated in "Not done" below, and no amount of green CI
-changes that: a session has never been played on a real device by this program,
-and Slice E's durable feedback surface is not built.
+**Device-independent, not complete.** The closeout finished the three gaps it
+set out to: silence is real media, feedback is durable, and readiness is five
+independent axes. That is the whole of what can be finished without hardware.
+A session has still never been played on a device and nobody has listened to
+one, so no platform is device-validated and store release stays blocked.
+
+### What the closeout added
+
+- **Silence is a playlist entry.** Clipped from one bundled source, because
+  `just_audio`'s `SilenceAudioSource` is Android-only. It reports completion
+  through the production player mapping, which closes a defect that made
+  audible completion **unreachable**: silence was required for coverage and
+  never queued.
+- **Feedback survives the process.** One local table, sqflite v1→v2, identity
+  `session_id` alone. Commit locally, then tell the server once.
+- **Five axes, two verdicts.** `CI` moves nothing else; `NOT_RUN` blocks
+  exactly as `FAIL` does.
+
+### Measured resource cost
+
+| Quantity | Value |
+|----------|-------|
+| `silence.wav` raw | 5,280,000 bytes (330 s, 8 kHz, mono, 16-bit, zero samples) |
+| AAB before (`ab798d18`, run 34699673264) | 53.6 MB |
+| AAB after (`f9b85cb`, run 34702361731) | 53.8 MB |
+| Delta | ≈ 0.2 MB, far under the ~6 MiB escalation threshold |
+
+The SDD claimed the WAV would compress to kilobytes in the package. The review
+was right that AAPT2 treats `.wav` as no-compress — that governs the *installed*
+package, while the AAB is a distribution format Play recompresses. So the
+0.2 MB figure is an AAB delta measured by the same tool on both commits, and is
+**not** a claim about on-device footprint, which was not measured.
 
 ## What each slice delivered
 
@@ -158,15 +187,15 @@ evidence path in `acceptance.v1.json`.
    NOT_RUN, and **no platform may be called device-validated**.
 2. **Nothing has been heard.** No human listening record exists, and no
    automated result substitutes for one.
-3. **Slice E is partial.** Completion and exposure semantics are implemented and
-   tested; durable feedback save, the pending-sync surface and the history
-   projection of a pending completion are not built.
-4. **Silence is not yet scheduled media.** Required silence counts toward
-   readiness but the runtime does not yet play it as a bounded media source, so
-   the long-silence-after-lock case (R06) has no implementation to test.
-5. **Every device-side budget is NOT_RUN.** No workstation figure is
+3. **Long silence across a locked screen is untested.** Scheduling silence as
+   native media is what makes it testable at all — a Dart timer could not
+   survive the lock — but whether the OS keeps the service alive across a
+   five-minute silence needs hardware. Recorded as `R06-DEVICE`, NOT_RUN.
+4. **Every device-side budget is NOT_RUN.** No workstation figure is
    substituted for a device figure.
-6. **The release gate is not yet split** into the five axes A8 requires.
+5. **Remote feedback synchronisation does not exist**, by design. `pending` is
+   a queryable local state; a later program may consume it. No worker, no
+   scheduler, no connectivity listener.
 7. **`ACCESS_NETWORK_STATE` is declared rather than stripped.** The merged
    manifest audit found it contributed transitively by ExoPlayer through
    `just_audio` — nothing in this repository requests it and no plugin's own

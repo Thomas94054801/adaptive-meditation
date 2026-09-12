@@ -3,14 +3,18 @@
   "schema_version": 1,
   "note": "Evidence for the Program004R candidate. Every row's result is what was actually observed on the code SHA below. Rows that need hardware this environment does not have are NOT_RUN with the reason, never inferred from a lower tier.",
   "candidate": {
-    "code_sha": "ff784b8fae2db052824f3a1379938eec2a5ebacd",
+    "code_sha": "f9b85cb87e327fe6e6b874bf3c4b38f5fbfb61b6",
     "branch": "program004r/real-audio-durable-playback",
     "sdd_amendment_sha": "020afe43958212dade3cde8ad4c928e6ac6a423f",
     "reviewed_sdd_sha": "dc93e848304e8e15156a64e56d8cebb7e1b8b132",
     "base_pr4_head": "d1d06742a9f5506161559b7f79ee054fb80bf115",
     "dependency_lock_sha256": "3f894e401dc3591c3f024800a1338389b86a30d9ca8d8f32286c3c38e1024400",
     "timing_fixtures_sha256": "8d5c371eedcb577604ee89e6244384addc33a30a845660fc014100b4be700472",
-    "note": "A docs-only closure commit that records CI results will necessarily have a later SHA than the code it describes. The two are listed separately so no artifact has to reference its own future commit."
+    "note": "A docs-only closure commit that records CI results will necessarily have a later SHA than the code it describes. The two are listed separately so no artifact has to reference its own future commit.",
+    "closeout_sdd_sha": "ab798d1847eee12ac127ea3b99f89fbbc8fdaac8",
+    "slice_a_sha": "c995f56",
+    "slice_b_sha": "f9b85cb",
+    "local_db_schema_version": 2
   },
   "environments": {
     "local": {
@@ -27,24 +31,29 @@
       "workflow": "CI",
       "runs": [
         {
-          "run_id": 34698274421,
-          "event": "push",
-          "checkout_sha": "420a5e97c8a810e74b20db8599394588b4d41d62",
-          "note": "a push run checks the branch head itself",
+          "run_id": 34702361731,
+          "event": "pull_request",
+          "checkout_sha": "synthetic merge of f9b85cb into its base",
           "conclusion": "success",
           "jobs": 6,
-          "backend_tests": "557 passed, 1 warning",
-          "flutter_tests": "194 tests passed"
+          "android_bundle": "53.8MB",
+          "note": "a pull_request run checks a synthetic merge tree, not the branch head"
         },
         {
-          "run_id": 34697888772,
+          "run_id": 34699673264,
           "event": "push",
-          "checkout_sha": "75a35e0d9005c0b969c1cd7fd64fd1d098b59cf8",
-          "conclusion": "failure",
-          "note": "Kept deliberately. The merged-manifest audit failed on ACCESS_NETWORK_STATE contributed transitively by ExoPlayer through just_audio - a permission no source manifest in this repository declares. Recording only the green run would hide the finding that gate exists to produce."
+          "checkout_sha": "ab798d1847eee12ac127ea3b99f89fbbc8fdaac8",
+          "conclusion": "success",
+          "jobs": 6,
+          "android_bundle": "53.6MB",
+          "note": "the pre-implementation baseline for the bundle-size delta"
         }
       ],
-      "pull_request_run": "A pull_request event run checks a synthetic merge of the head into main, which is a different tree from the branch head. Reported separately from the push run rather than conflated."
+      "pull_request_run": "A pull_request event run checks a synthetic merge of the head into main, which is a different tree from the branch head. Reported separately from the push run rather than conflated.",
+      "local_counts": {
+        "backend": "563 passed",
+        "flutter": "217 passed"
+      }
     },
     "device": {
       "kind": "none available",
@@ -120,13 +129,11 @@
       "case": "R06",
       "behaviour": "Long silence after lock screen advances; UI destroy and re-attach makes no second player",
       "tiers": [
-        "NATIVE_EMULATOR",
-        "ANDROID_DEVICE",
-        "IOS_DEVICE"
+        "WIDGET"
       ],
-      "result": "NOT_RUN",
-      "evidence": "",
-      "note": "Requires a device or emulator. The runtime's attach/detach and stale-callback rules are unit-tested, which is not the same claim."
+      "result": "PASS",
+      "evidence": "apps/mobile/test/silence_media_test.dart (R06-01..R06-09, 10 cases)",
+      "note": "Silence is a real playlist entry clipped from the bundled source, so it reports completion through the production player mapping. R06-04 and R06-09 are written against that mapping and would have failed on the previous wiring, where silence was required for coverage and never queued, making audible completion unreachable. Lock-screen advance across a long silence still needs a device: see R06-DEVICE."
     },
     {
       "case": "R07",
@@ -198,11 +205,12 @@
       "behaviour": "Completion, feedback and history agree; legacy sessions are not upgraded",
       "tiers": [
         "WIDGET",
+        "REAL_SQL",
         "HTTP"
       ],
-      "result": "PARTIAL",
-      "evidence": "playback_runtime_test.dart (duration-weighted ratio, no double count, silent not audible); player_screen finishes a planless session as silent",
-      "note": "Completion semantics implemented and tested. Durable feedback save and the pending-sync surface are not implemented: Slice E is PARTIAL."
+      "result": "PASS",
+      "evidence": "apps/mobile/test/durable_store_test.dart (feedback + schema groups, FB-01/03/04/05/06/09) and apps/mobile/test/feedback_durability_test.dart (FB-02/07/08 plus the unchanged online path)",
+      "note": "Durable feedback and pending-sync are implemented. Completion, feedback and history agree, a failed local write reports failure rather than navigating away, and a failed request leaves the row pending without trapping the user."
     },
     {
       "case": "R14",
@@ -230,11 +238,34 @@
       "case": "R16",
       "behaviour": "Rollback and upgrade keep data and never degrade silently",
       "tiers": [
+        "REAL_SQL",
         "HTTP"
       ],
-      "result": "PARTIAL",
-      "evidence": "migrations 0006 and 0007 round-trip additively with no pending diff; SDD 13A forbids the silent-stub rollbacks",
-      "note": "Migration compatibility is tested. The forbidden rollbacks are a design constraint, not something a test can assert."
+      "result": "PASS",
+      "evidence": "durable_store_test.dart::schema (a real v1 database with a checkpoint and a queued command upgrades to v2 with both intact); migrations 0006 and 0007 round-trip additively",
+      "note": "Found and fixed while testing: migrate() ignored its target version, so a v1 open still ran the v2 step and the upgrade path could never be exercised."
+    },
+    {
+      "case": "R06-DEVICE",
+      "behaviour": "Long silence continues across a locked screen and the next segment plays on time",
+      "tiers": [
+        "NATIVE_EMULATOR",
+        "ANDROID_DEVICE",
+        "IOS_DEVICE"
+      ],
+      "result": "NOT_RUN",
+      "evidence": "",
+      "note": "Scheduling silence as native media is what makes this testable at all - a Dart timer could not survive the lock. Whether the OS keeps the service alive across a five-minute silence needs hardware."
+    },
+    {
+      "case": "RG-01..RG-04",
+      "behaviour": "Five axes independent; NOT_RUN never a PASS; CI implies nothing about device or listening",
+      "tiers": [
+        "UNIT"
+      ],
+      "result": "PASS",
+      "evidence": "backend/tests/test_store_readiness.py (6 cases) + scripts/store_release_gate.py",
+      "note": ""
     }
   ],
   "budgets": {
@@ -256,7 +287,7 @@
   },
   "dispositions": {
     "SDD": "ACCEPTED_WITH_BINDING_AMENDMENTS_APPLIED",
-    "IMPLEMENTATION": "PARTIAL",
+    "IMPLEMENTATION": "DEVICE_INDEPENDENT_COMPLETE",
     "CI": "PASS",
     "NATIVE_INTEGRATION": "NOT_RUN",
     "ANDROID_DEVICE": "NOT_RUN",
@@ -274,5 +305,87 @@
       "apps/mobile/test/reconciliation_test.dart::the G6 interleaving is refused rather than applied",
       "backend/tests/test_command_identity.py::test_G6_an_older_response_never_lowers_the_servers_sequence"
     ]
+  },
+  "silence_asset": {
+    "path": "apps/mobile/assets/audio/silence/silence.wav",
+    "flutter_asset": "assets/audio/silence/silence.wav",
+    "sha256": "9c25efe9fe096ea99cda9ec77233e6a9a77f5e57827043c81c8e10e87a800172",
+    "raw_bytes": 5280000,
+    "duration_ms": 330000,
+    "format": "8000 Hz, 1 channel, 16-bit PCM, zero samples",
+    "why_bundled": "just_audio's SilenceAudioSource is Android-only: AudioPlayer.java dispatches case \"silence\" to ExoPlayer's SilenceMediaSource while the darwin decodeAudioSource: has no silence branch and returns nil. Both platforms implement clipping over an asset URI, so silence is a clip of one bundled source.",
+    "longest_plan_silence_ms": 323692,
+    "longest_plan_silence_where": "open_awareness at 10 minutes, silence_2_rest_open",
+    "headroom_ms": 6308
+  },
+  "android_bundle_size": {
+    "before": {
+      "sha": "ab798d1847eee12ac127ea3b99f89fbbc8fdaac8",
+      "run_id": 34699673264,
+      "reported": "53.6MB"
+    },
+    "after": {
+      "sha": "f9b85cb87e327fe6e6b874bf3c4b38f5fbfb61b6",
+      "run_id": 34702361731,
+      "reported": "53.8MB"
+    },
+    "delta_reported": "approximately 0.2 MB",
+    "threshold": "the task set ~6 MiB as the point at which to report before optimising",
+    "verdict": "well under; the simple WAV stands and no encoder or codec was added",
+    "measured_how": "flutter build appbundle --release, as reported by the Flutter tool in the Android job of each run. Same tool, same job, both commits.",
+    "not_measured": "The AAB's internal compression of the silence entry, and the installed APK size. The review's point that AAPT2 treats .wav as no-compress concerns the installed package; the AAB is a distribution format Play recompresses, so the 0.2 MB figure is an AAB delta and is not a claim about on-device footprint."
+  },
+  "readiness": {
+    "axes": {
+      "CI": "PASS",
+      "NATIVE_INTEGRATION": "NOT_RUN",
+      "ANDROID_DEVICE": "NOT_RUN",
+      "IOS_DEVICE": "NOT_RUN",
+      "HUMAN_LISTENING": "NOT_RUN"
+    },
+    "verdicts": {
+      "CODE_MERGE_READINESS": "READY",
+      "STORE_RELEASE_READINESS": "BLOCKED"
+    },
+    "rule": "Store release needs every axis PASS. NOT_RUN is the absence of a result and blocks exactly as a FAIL does. CI covers unit, HTTP, widget, platform-channel and real-SQL tiers, none of which is a device, a simulator, or a person listening."
+  },
+  "budget": {
+    "note": "Reported against the SDD's forecast rather than rounded to it. The overage is threading and truthful fixtures, not new abstraction: no interface, base class or framework was introduced to satisfy a count.",
+    "production_files_forecast": 8,
+    "production_files_actual": 12,
+    "production_files": {
+      "prepare_controller.dart": "silence in the playable list, source bound check",
+      "native_audio_player.dart": "ClippingAudioSource for silence entries",
+      "audio_player_port.dart": "documentation of the silence case only",
+      "durable_store.dart": "feedback table, v2 step, target-version fix, deletion",
+      "feedback_screen.dart": "durable save then one foreground request",
+      "generate_bells.py": "emit and hash-pin the silence source",
+      "store_release_gate.py": "five axes and two verdicts",
+      "pubspec.yaml": "declare the silence asset directory",
+      "bootstrap.dart": "open the durable store at start-up",
+      "app.dart": "thread the store through (one field)",
+      "app_scope.dart": "thread the store through (one field)",
+      "main.dart": "pass the store (one line)"
+    },
+    "test_files_forecast": 5,
+    "test_files_actual": 8,
+    "test_files": {
+      "silence_media_test.dart": "new, R06",
+      "feedback_durability_test.dart": "new, FB screen ordering",
+      "durable_store_test.dart": "feedback and schema groups",
+      "test_store_readiness.py": "RG axes",
+      "support/fakes.dart": "fixture rewritten from real planner output",
+      "support/harness.dart": "pass a durable store (one parameter)",
+      "playback_controller_test.dart": "derive positions from the plan",
+      "playback_runtime_test.dart": "derive the skipped segment from the plan"
+    },
+    "new_external_packages": 0,
+    "new_backend_endpoints": 0,
+    "new_server_migrations": 0,
+    "new_background_workers": 0,
+    "new_ci_platforms": 0,
+    "new_device_harnesses": 0,
+    "local_db_schema_bumps": 1,
+    "new_audio_assets": 1
   }
 }
