@@ -41,6 +41,11 @@ dev_dependencies:
     sdk: flutter
   integration_test:
     sdk: flutter
+  # Runs the real SQLite engine on the host, so the durable store's schema,
+  # transactions and quota behaviour are tested against actual SQL rather than
+  # against a mock that cannot disagree with it. Dev-only: production uses
+  # sqflite's platform implementation.
+  sqflite_common_ffi: ^2.3.0
   flutter_lints: ^6.0.0
   yaml: ^3.1.4
 
