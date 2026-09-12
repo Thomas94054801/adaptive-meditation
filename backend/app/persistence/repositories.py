@@ -15,6 +15,7 @@ import sqlalchemy as sa
 from sqlalchemy import select
 from sqlalchemy.orm import Session as OrmSession
 
+from app.domain.audio.render import RenderResult
 from app.domain.experiment.assignment import Assignment
 from app.domain.outcome.models import SessionOutcome
 from app.domain.recommendation.engine import Recommendation
@@ -368,6 +369,75 @@ class SessionDefinitionRepository:
         if row is None:
             return None
         return SessionDefinition.from_dict(dict(row.content))
+
+
+class AudioRenderRepository:
+    """Measured renders, addressed by content.
+
+    Write-once like the definitions: a render_key already present describes the
+    same bytes by construction, so recording one again is a no-op rather than an
+    update. Nothing here takes a guest id, because nothing here is about a guest.
+    """
+
+    def __init__(self, session: OrmSession) -> None:
+        self._session = session
+
+    def get(self, render_key: str) -> RenderResult | None:
+        row = self._session.get(models.AudioRender, render_key)
+        if row is None:
+            return None
+        return RenderResult(
+            render_key=row.render_key,
+            duration_ms=row.duration_ms,
+            content_sha256=row.content_sha256,
+            uri=row.uri,
+            provider_id=row.provider_id,
+            provider_version=row.provider_version,
+            byte_size=row.byte_size,
+        )
+
+    def record(
+        self,
+        result: RenderResult,
+        *,
+        locale: str,
+        voice_id: str,
+        style: str,
+        render_version: str = "1",
+    ) -> models.AudioRender:
+        existing = self._session.get(models.AudioRender, result.render_key)
+        if existing is not None:
+            return existing
+        row = models.AudioRender(
+            render_key=result.render_key,
+            locale=locale,
+            voice_id=voice_id,
+            style=style,
+            provider_id=result.provider_id,
+            provider_version=result.provider_version,
+            render_version=render_version,
+            duration_ms=result.duration_ms,
+            content_sha256=result.content_sha256,
+            byte_size=result.byte_size,
+            uri=result.uri,
+            created_at=utcnow(),
+        )
+        self._session.add(row)
+        self._session.flush()
+        return row
+
+    def measured_durations(self, render_keys: list[str]) -> dict[str, int]:
+        """Measured durations for keys already rendered — SDD section 9.3.
+
+        The planner reads these and estimates only when they are missing, so
+        planning accuracy improves as the corpus warms.
+        """
+        if not render_keys:
+            return {}
+        stmt = select(models.AudioRender.render_key, models.AudioRender.duration_ms).where(
+            models.AudioRender.render_key.in_(render_keys)
+        )
+        return dict(self._session.execute(stmt).all())  # type: ignore[arg-type]
 
 
 @dataclass(frozen=True, slots=True)

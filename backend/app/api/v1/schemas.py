@@ -210,6 +210,34 @@ class PlaybackStateResponse(BaseModel):
     resume_offset_ms: int = 0
 
 
+class RenderManifestEntryResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    segment_id: str
+    render_key: str
+    duration_ms: int
+    content_sha256: str
+    """Verified before playing. A mismatch is deleted and re-fetched, not played."""
+    uri: str
+
+
+class RenderManifestResponse(BaseModel):
+    """What a client needs to warm its cache before a session is ready."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    session_id: uuid.UUID
+    plan_hash: str
+    provider_id: str
+    locale: str
+    entries: list[RenderManifestEntryResponse]
+    unresolved: list[str]
+    """Segment ids the backend could not resolve. The client renders these with
+    device-native TTS, or shows the transcript. Not an error: with device TTS as
+    the shipped provider, every segment being unresolved is the normal case."""
+    complete: bool
+
+
 SessionEventType = Literal[
     "session_created",
     "session_prepared",

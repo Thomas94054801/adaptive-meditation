@@ -39,6 +39,9 @@ class Settings(BaseSettings):
     # PostgreSQL schema to place the application's tables in. Empty means the
     # connection's default search_path. The test suite sets a unique one per run.
     database_schema: str = Field(default="", alias="DATABASE_SCHEMA")
+    speech_provider: str = Field(default="none", alias="SPEECH_PROVIDER")
+    """Server-side renderer. Default none: the shipped provider is device-native
+    TTS, which runs on the client."""
     database_pool_size: int = Field(default=5, alias="DATABASE_POOL_SIZE")
     database_max_overflow: int = Field(default=5, alias="DATABASE_MAX_OVERFLOW")
 

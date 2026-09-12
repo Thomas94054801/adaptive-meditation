@@ -313,6 +313,44 @@ class SessionEvent(Base):
     )
 
 
+class AudioRender(Base):
+    """A measured render, addressed by its content — SDD section 9.1.
+
+    Keyed by render_key, which derives from the text, locale, voice, style and
+    provider version and from nothing about who asked. Two guests who hear the
+    same sentence share this row, which is a storage win and a privacy
+    property: the table records which content was rendered, never who heard it.
+
+    Nothing is mutated in place. A voice version change produces a different
+    key, so old rows age out rather than being overwritten.
+
+    Memory/storage: bounded by the corpus, not by users - roughly 33 utterances
+    per voice per locale, so six voices across two locales is about 400 rows
+    forever, regardless of how many sessions are played.
+    """
+
+    __tablename__ = "audio_renders"
+    __table_args__ = (
+        sa.CheckConstraint("duration_ms > 0", name="ck_audio_renders_duration"),
+        sa.CheckConstraint("byte_size >= 0", name="ck_audio_renders_size"),
+    )
+
+    render_key: Mapped[str] = mapped_column(sa.String(64), primary_key=True)
+    locale: Mapped[str] = mapped_column(sa.String(16), nullable=False, index=True)
+    voice_id: Mapped[str] = mapped_column(sa.String(64), nullable=False)
+    style: Mapped[str] = mapped_column(sa.String(32), nullable=False)
+    provider_id: Mapped[str] = mapped_column(sa.String(32), nullable=False, index=True)
+    provider_version: Mapped[str] = mapped_column(sa.String(32), nullable=False)
+    render_version: Mapped[str] = mapped_column(sa.String(16), nullable=False)
+    duration_ms: Mapped[int] = mapped_column(sa.Integer, nullable=False)
+    content_sha256: Mapped[str] = mapped_column(sa.String(64), nullable=False)
+    byte_size: Mapped[int] = mapped_column(sa.Integer, nullable=False, default=0)
+    uri: Mapped[str] = mapped_column(sa.String(512), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        sa.DateTime(timezone=True), nullable=False, server_default=sa.func.current_timestamp()
+    )
+
+
 class RecommendationCandidate(Base):
     """One scored candidate from the rule set, kept for offline evaluation.
 

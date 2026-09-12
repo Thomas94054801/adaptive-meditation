@@ -552,6 +552,72 @@ components:
       - practice_public_name
       title: RecommendationResponse
       type: object
+    RenderManifestEntryResponse:
+      additionalProperties: false
+      properties:
+        content_sha256:
+          title: Content Sha256
+          type: string
+        duration_ms:
+          title: Duration Ms
+          type: integer
+        render_key:
+          title: Render Key
+          type: string
+        segment_id:
+          title: Segment Id
+          type: string
+        uri:
+          title: Uri
+          type: string
+      required:
+      - segment_id
+      - render_key
+      - duration_ms
+      - content_sha256
+      - uri
+      title: RenderManifestEntryResponse
+      type: object
+    RenderManifestResponse:
+      additionalProperties: false
+      description: What a client needs to warm its cache before a session is ready.
+      properties:
+        complete:
+          title: Complete
+          type: boolean
+        entries:
+          items:
+            $ref: '#/components/schemas/RenderManifestEntryResponse'
+          title: Entries
+          type: array
+        locale:
+          title: Locale
+          type: string
+        plan_hash:
+          title: Plan Hash
+          type: string
+        provider_id:
+          title: Provider Id
+          type: string
+        session_id:
+          format: uuid
+          title: Session Id
+          type: string
+        unresolved:
+          items:
+            type: string
+          title: Unresolved
+          type: array
+      required:
+      - session_id
+      - plan_hash
+      - provider_id
+      - locale
+      - entries
+      - unresolved
+      - complete
+      title: RenderManifestResponse
+      type: object
     SessionCreateRequest:
       additionalProperties: false
       description: '``recommendation`` is optional and, when supplied, is verified.
@@ -1813,6 +1879,69 @@ paths:
                 $ref: '#/components/schemas/ErrorResponse'
           description: Validation error
       summary: Apply a playback command
+      tags:
+      - v1
+  /v1/sessions/{session_id}/prepare:
+    post:
+      description: 'Build the render manifest for a session''s speech segments.
+
+
+        Cache first, renderer only on a miss, which is what makes synthesis a
+
+        one-off cost rather than a per-session one. With no server-side renderer
+
+        configured - the shipping default - every segment comes back unresolved and
+
+        the client speaks them with device-native TTS.'
+      operationId: prepareSession
+      parameters:
+      - in: path
+        name: session_id
+        required: true
+        schema:
+          format: uuid
+          title: Session Id
+          type: string
+      - in: header
+        name: X-Guest-Id
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-Guest-Id
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RenderManifestResponse'
+          description: Successful Response
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Guest identity required
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Resource not found
+        '409':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Conflicting state
+        '422':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+          description: Validation Error
+      summary: Resolve the audio a session needs
       tags:
       - v1
   /v1/sessions/{session_id}/start:

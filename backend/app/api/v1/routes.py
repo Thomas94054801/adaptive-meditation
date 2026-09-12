@@ -6,6 +6,7 @@ import uuid
 
 from fastapi import APIRouter, HTTPException, Response, status
 
+from app.adapters.audio.registry import build_renderer
 from app.api.deps import (
     CatalogDep,
     DatabaseDep,
@@ -13,6 +14,7 @@ from app.api.deps import (
     EngineDep,
     OptionalGuestDep,
     RequiredGuestDep,
+    SettingsDep,
 )
 from app.api.v1.schemas import (
     CandidateListResponse,
@@ -25,12 +27,16 @@ from app.api.v1.schemas import (
     PlaybackCommandRequest,
     PlaybackStateResponse,
     RecommendationResponse,
+    RenderManifestEntryResponse,
+    RenderManifestResponse,
     SessionCreateRequest,
     SessionEventBatchRequest,
     SessionEventBatchResponse,
     SessionFeedbackRequest,
     SessionResponse,
 )
+from app.domain.audio.coordinator import build_manifest
+from app.domain.audio.render import RenderResult
 from app.domain.experiment.assignment import (
     EXPLANATION_COPY_EXPERIMENT,
     ExperimentError,
@@ -42,6 +48,12 @@ from app.domain.playback.state_machine import InvalidTransition
 from app.domain.recommendation.engine import Recommendation
 from app.domain.session.service import build_plan
 from app.domain.state.models import CheckIn, StateVector
+from app.domain.timeline.planner_v2 import (
+    PLAN_TIME_STYLE as DEFAULT_STYLE,
+)
+from app.domain.timeline.planner_v2 import (
+    PLAN_TIME_VOICE as DEFAULT_VOICE_ID,
+)
 from app.domain.timeline.planner_v2 import SessionPlanV2
 from app.domain.timeline.service import (
     apply_command,
@@ -51,6 +63,7 @@ from app.domain.timeline.service import (
 )
 from app.persistence import models
 from app.persistence.repositories import (
+    AudioRenderRepository,
     CheckInRepository,
     EventDraft,
     GuestRepository,
@@ -507,6 +520,72 @@ def apply_playback_command(
             )
 
     return _playback_state(row, applied=outcome.applied)
+
+
+@router.post(
+    "/sessions/{session_id}/prepare",
+    operation_id="prepareSession",
+    response_model=RenderManifestResponse,
+    responses={k: ERROR_RESPONSES[k] for k in (401, 404, 409)},
+    summary="Resolve the audio a session needs",
+)
+def prepare_session(
+    session_id: uuid.UUID,
+    db: DbSessionDep,
+    guest_id: RequiredGuestDep,
+    settings: SettingsDep,
+) -> RenderManifestResponse:
+    """Build the render manifest for a session's speech segments.
+
+    Cache first, renderer only on a miss, which is what makes synthesis a
+    one-off cost rather than a per-session one. With no server-side renderer
+    configured - the shipping default - every segment comes back unresolved and
+    the client speaks them with device-native TTS.
+    """
+    row = _owned_session(session_id, guest_id, db)
+    if not row.plan_v2:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={
+                "code": "no_typed_plan",
+                "message": "This session predates typed plans and cannot be prepared.",
+            },
+        )
+
+    plan = SessionPlanV2.from_dict(dict(row.plan_v2))
+    renders = AudioRenderRepository(db)
+    renderer = build_renderer(settings.speech_provider, app_env=settings.app_env)
+    manifest = build_manifest(plan, renderer, renders.get)
+
+    for entry in manifest.entries:
+        if not entry.from_cache:
+            renders.record(
+                RenderResult(
+                    render_key=entry.render_key,
+                    duration_ms=entry.duration_ms,
+                    content_sha256=entry.content_sha256,
+                    uri=entry.uri,
+                    provider_id=renderer.provider_id,
+                    provider_version=renderer.provider_version,
+                    byte_size=0,
+                ),
+                locale=plan.locale,
+                voice_id=DEFAULT_VOICE_ID,
+                style=DEFAULT_STYLE,
+            )
+
+    return RenderManifestResponse(
+        session_id=row.id,
+        plan_hash=plan.plan_hash,
+        provider_id=renderer.provider_id,
+        locale=plan.locale,
+        entries=[
+            RenderManifestEntryResponse(**entry.as_dict())  # type: ignore[arg-type]
+            for entry in manifest.entries
+        ],
+        unresolved=list(manifest.unresolved),
+        complete=manifest.complete,
+    )
 
 
 @router.get(

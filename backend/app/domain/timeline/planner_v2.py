@@ -15,6 +15,8 @@ speech, silence and bell segments a person actually experiences.
 
 from __future__ import annotations
 
+import hashlib
+import unicodedata
 from dataclasses import dataclass
 from string import Template
 from typing import Any
@@ -128,12 +130,25 @@ def render_key_for(
     hear the same sentence share one cache entry, which is both a storage win
     and the reason the cache reveals content rather than who asked for it.
 
-    Fields are separated so two different splits cannot hash identically.
+    Fields are separated by a NUL byte so two different splits cannot hash
+    identically, and text is NFC-normalised first: the same visible sentence
+    authored with decomposed accents must not miss the cache.
     """
-    normalized = " ".join(text.split())
-    return content_hash(
-        [normalized, locale, voice_id, style, provider_id, provider_version, render_version]
+    fields = (
+        normalize_text(text),
+        locale,
+        voice_id,
+        style,
+        provider_id,
+        provider_version,
+        render_version,
     )
+    return hashlib.sha256(b"\x00".join(f.encode("utf-8") for f in fields)).hexdigest()
+
+
+def normalize_text(text: str) -> str:
+    """NFC, collapse internal whitespace, strip the ends — SDD section 9.1."""
+    return " ".join(unicodedata.normalize("NFC", text).split())
 
 
 # The placeholder render identity used at plan time. The runtime substitutes the
