@@ -6,7 +6,6 @@ import 'package:adaptive_meditation/core/resolution.dart';
 import 'package:adaptive_meditation/features/session/prepare_controller.dart';
 import 'package:adaptive_meditation/platform/audio_player_port.dart';
 import 'package:adaptive_meditation/platform/providers.dart';
-import 'package:crypto/crypto.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'support/fakes.dart';
