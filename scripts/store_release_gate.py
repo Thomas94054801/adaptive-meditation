@@ -22,7 +22,6 @@ from __future__ import annotations
 import argparse
 import json
 import plistlib
-import re
 import subprocess
 import sys
 from dataclasses import dataclass
@@ -91,9 +90,7 @@ def check_engineering() -> list[Check]:
     checks: list[Check] = []
 
     ok, detail = _script("check_android_store_readiness.py")
-    checks.append(
-        Check("Android target API >= 36 and permissions", PASS if ok else FAIL, detail)
-    )
+    checks.append(Check("Android target API >= 36 and permissions", PASS if ok else FAIL, detail))
 
     ok, detail = _script("check_compliance_consistency.py")
     checks.append(Check("compliance mappings consistent", PASS if ok else FAIL, detail))
@@ -104,7 +101,7 @@ def check_engineering() -> list[Check]:
             with manifest.open("rb") as handle:
                 plistlib.load(handle)
             checks.append(Check("Apple privacy manifest valid", PASS, str(manifest.name)))
-        except Exception as error:  # noqa: BLE001
+        except Exception as error:
             checks.append(Check("Apple privacy manifest valid", FAIL, str(error)))
     else:
         checks.append(Check("Apple privacy manifest valid", FAIL, "missing"))
@@ -189,14 +186,23 @@ def check_builds() -> list[Check]:
         )
     ]
 
-    xcode = subprocess.run(["xcodebuild", "-version"], capture_output=True, text=True)
+    # FileNotFoundError, not a non-zero exit, is what a Linux runner gives here.
+    # The gate must report that as BLOCKED - which is exactly what it means -
+    # rather than crashing and looking like an engineering failure.
+    try:
+        xcode_available = (
+            subprocess.run(["xcodebuild", "-version"], capture_output=True, text=True).returncode
+            == 0
+        )
+        xcode_detail = "xcodebuild available" if xcode_available else "xcodebuild failed"
+    except (FileNotFoundError, OSError):
+        xcode_available = False
+        xcode_detail = "xcodebuild not present on this machine"
     checks.append(
         Check(
             "iOS release compile",
-            PASS if xcode.returncode == 0 else BLOCKED,
-            "xcodebuild available"
-            if xcode.returncode == 0
-            else "full Xcode not installed on this machine",
+            PASS if xcode_available else BLOCKED,
+            xcode_detail,
             external=True,
         )
     )

@@ -17,7 +17,6 @@ from __future__ import annotations
 
 import re
 import subprocess
-import sys
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -48,10 +47,17 @@ VALUE_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
     ("Apple auth key filename", re.compile(r"AuthKey_[A-Z0-9]{10}\.p8")),
     ("service account json", re.compile(r'"type"\s*:\s*"service_account"')),
     ("OCI ocid", re.compile(r"ocid1\.(tenancy|user)\.oc1\.\.[a-z0-9]{20,}")),
-    ("OCI key fingerprint", re.compile(r"^\s*fingerprint\s*=\s*([0-9a-f]{2}:){15}[0-9a-f]{2}", re.M)),
+    (
+        "OCI key fingerprint",
+        re.compile(r"^\s*fingerprint\s*=\s*([0-9a-f]{2}:){15}[0-9a-f]{2}", re.M),
+    ),
     ("JWT", re.compile(r"\beyJ[A-Za-z0-9_\-]{10,}\.[A-Za-z0-9_\-]{10,}\.[A-Za-z0-9_\-]{10,}")),
-    ("hardcoded db password in url", re.compile(
-        r"(postgres(ql)?(\+\w+)?)://[^\s:/@]+:(?!\$|\{|change-me|adaptive@)[^\s:/@]{3,}@", re.I)),
+    (
+        "hardcoded db password in url",
+        re.compile(
+            r"(postgres(ql)?(\+\w+)?)://[^\s:/@]+:(?!\$|\{|change-me|adaptive@)[^\s:/@]{3,}@", re.I
+        ),
+    ),
 )
 
 # Patterns that only make sense for particular file types. Scoped, because an
@@ -61,7 +67,9 @@ SUFFIX_PATTERNS: tuple[tuple[tuple[str, ...], str, re.Pattern[str]], ...] = (
     (
         (".gradle", ".kts", ".properties"),
         "gradle signing password",
-        re.compile(r"(storePassword|keyPassword)\s*[=:]\s*[\"']?(?!\$|System\.|\s*$)[^\"'\s]{3,}", re.I),
+        re.compile(
+            r"(storePassword|keyPassword)\s*[=:]\s*[\"']?(?!\$|System\.|\s*$)[^\"'\s]{3,}", re.I
+        ),
     ),
     (
         (".xcconfig",),
@@ -95,9 +103,24 @@ SELF_EXEMPT = {
 # Extensions Program003 added. Listed so the coverage is auditable rather than
 # implied by "we read every text file".
 COVERED_SUFFIXES = (
-    ".dart", ".plist", ".xcprivacy", ".gradle", ".kts", ".xcconfig",
-    ".json", ".yaml", ".yml", ".py", ".xml", ".properties", ".pbxproj",
-    ".md", ".txt", ".toml", ".sh", ".env.example",
+    ".dart",
+    ".plist",
+    ".xcprivacy",
+    ".gradle",
+    ".kts",
+    ".xcconfig",
+    ".json",
+    ".yaml",
+    ".yml",
+    ".py",
+    ".xml",
+    ".properties",
+    ".pbxproj",
+    ".md",
+    ".txt",
+    ".toml",
+    ".sh",
+    ".env.example",
 )
 
 

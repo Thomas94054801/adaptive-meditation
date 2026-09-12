@@ -29,7 +29,6 @@ from __future__ import annotations
 
 import plistlib
 import re
-import sys
 from pathlib import Path
 from typing import Any
 
@@ -89,7 +88,10 @@ def check_store_mappings(failures: list[str], results: list[str]) -> None:
         failures.append("data inventory declares no collected category; check the parser")
         return
 
-    for label, path in (("Apple App Privacy", APPLE_PRIVACY), ("Google Data Safety", GOOGLE_SAFETY)):
+    for label, path in (
+        ("Apple App Privacy", APPLE_PRIVACY),
+        ("Google Data Safety", GOOGLE_SAFETY),
+    ):
         refs = mapped_refs(load(path))
         missing = sorted(categories - refs)
         if missing:
@@ -149,7 +151,7 @@ def check_privacy_manifest(failures: list[str], results: list[str]) -> None:
     try:
         with PRIVACY_MANIFEST.open("rb") as handle:
             manifest = plistlib.load(handle)
-    except Exception as error:  # noqa: BLE001 - any parse failure is a failure
+    except Exception as error:
         failures.append(f"privacy manifest does not parse: {error}")
         return
 

@@ -21,7 +21,6 @@ from __future__ import annotations
 
 import argparse
 import re
-import sys
 import xml.etree.ElementTree as ET
 import zipfile
 from pathlib import Path
@@ -67,8 +66,7 @@ ALLOWED_GENERATED_PERMISSION_SUFFIXES = (
 
 def _is_generated_app_scoped(name: str, application_id: str) -> bool:
     return any(
-        name == f"{application_id}{suffix}"
-        for suffix in ALLOWED_GENERATED_PERMISSION_SUFFIXES
+        name == f"{application_id}{suffix}" for suffix in ALLOWED_GENERATED_PERMISSION_SUFFIXES
     )
 
 
@@ -175,9 +173,7 @@ def check_cleartext(results: list[str]) -> None:
 
     cleartext = application.get(f"{ANDROID_NS}usesCleartextTraffic")
     if cleartext != "false":
-        raise CheckFailure(
-            f"android:usesCleartextTraffic is {cleartext!r}, expected 'false'"
-        )
+        raise CheckFailure(f"android:usesCleartextTraffic is {cleartext!r}, expected 'false'")
     config = application.get(f"{ANDROID_NS}networkSecurityConfig")
     if not config:
         raise CheckFailure("no android:networkSecurityConfig declared")
@@ -187,9 +183,7 @@ def check_cleartext(results: list[str]) -> None:
         raise CheckFailure(f"{release_config} is missing")
     release_xml = release_config.read_text(encoding="utf-8")
     if 'cleartextTrafficPermitted="true"' in release_xml:
-        raise CheckFailure(
-            "the release network security config permits cleartext traffic"
-        )
+        raise CheckFailure("the release network security config permits cleartext traffic")
     results.append("release config is HTTPS-only; debug overlay permits loopback only")
 
 
@@ -221,9 +215,7 @@ def main() -> int:
     results: list[str] = []
     try:
         check_sdk_levels(results)
-        check_permissions(
-            SOURCE_MANIFEST.read_text(encoding="utf-8"), "source manifest", results
-        )
+        check_permissions(SOURCE_MANIFEST.read_text(encoding="utf-8"), "source manifest", results)
         check_cleartext(results)
         if args.merged_manifest:
             check_merged_manifest(args.merged_manifest, results)

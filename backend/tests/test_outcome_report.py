@@ -239,7 +239,15 @@ def test_the_report_is_read_only(seeded: Database, client: TestClient) -> None:
     assert [(c.goal, c.practice_id, c.sessions, len(c.primary_deltas)) for c in after] == snapshot
 
 
-def test_the_script_runs_and_emits_json(seeded: Database) -> None:
+def test_the_script_runs_and_emits_json(seeded: Database, settings: Settings) -> None:
+    """Runs the script as a script, with the database passed explicitly.
+
+    The script reads DATABASE_URL from the environment. Relying on the ambient
+    value made this pass locally and fail in CI, where only TEST_DATABASE_URL is
+    set - so the test now supplies it rather than inheriting one.
+    """
+    import os
+
     seeded.dispose()
     completed = subprocess.run(
         [sys.executable, str(BACKEND_ROOT / "scripts" / "outcome_report.py"), "--json"],
@@ -247,6 +255,7 @@ def test_the_script_runs_and_emits_json(seeded: Database) -> None:
         text=True,
         cwd=BACKEND_ROOT,
         timeout=120,
+        env={**os.environ, "DATABASE_URL": settings.database_url},
     )
     assert completed.returncode == 0, completed.stderr
 
