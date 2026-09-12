@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import '../core/api.dart';
 import '../core/config.dart';
+import '../core/durable_store.dart';
 import '../core/guest.dart';
 import '../features/history/history_store.dart';
 import '../features/welcome/welcome_screen.dart';
@@ -20,18 +21,21 @@ class AdaptiveMeditationApp extends StatelessWidget {
     SecureIdentityStore? identityStore,
     AudioPlayerPort? player,
     Directory? mediaDirectory,
+    DurableStore? store,
     super.key,
   }) : _identityStore = identityStore ?? PlatformSecureIdentityStore(),
        _api = api,
        _adaptersOverride = adapters,
        _player = player,
-       _mediaDirectory = mediaDirectory;
+       _mediaDirectory = mediaDirectory,
+       _store = store;
 
   final MeditationApi? _api;
   final PlatformAdapters? _adaptersOverride;
   final SecureIdentityStore _identityStore;
   final AudioPlayerPort? _player;
   final Directory? _mediaDirectory;
+  final DurableStore? _store;
 
   @override
   Widget build(BuildContext context) {
@@ -48,6 +52,7 @@ class AdaptiveMeditationApp extends StatelessWidget {
       adapters: adapters,
       player: _player,
       mediaDirectory: _mediaDirectory,
+      store: _store,
       child: MaterialApp(
         title: 'Adaptive Meditation',
         theme: buildTheme(Brightness.light),

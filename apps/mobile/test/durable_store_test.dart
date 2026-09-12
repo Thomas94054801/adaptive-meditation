@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:adaptive_meditation/core/durable_store.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
@@ -15,10 +17,16 @@ void main() {
 
   late Database db;
   late DurableStore store;
+  late String dbPath;
 
   setUp(() async {
+    // A real file rather than :memory:, so the reopen test exercises what a
+    // relaunch actually does. Deleted in tearDown.
+    dbPath =
+        '${Directory.systemTemp.path}/p4r_store_${DateTime.now().microsecondsSinceEpoch}.db';
+    await databaseFactory.deleteDatabase(dbPath);
     db = await databaseFactory.openDatabase(
-      inMemoryDatabasePath,
+      dbPath,
       options: OpenDatabaseOptions(
         version: DurableStore.schemaVersion,
         onCreate: (Database db, int version) =>
@@ -29,7 +37,12 @@ void main() {
     store = DurableStore(database: db);
   });
 
-  tearDown(() async => db.close());
+  tearDown(() async {
+    if (db.isOpen) {
+      await db.close();
+    }
+    await databaseFactory.deleteDatabase(dbPath);
+  });
 
   Checkpoint checkpoint({
     String sessionId = 's-1',
@@ -55,7 +68,7 @@ void main() {
   group('checkpoints', () {
     test('a checkpoint survives a store reopen', () async {
       await store.saveCheckpoint(
-        checkpoint(positionMs: 180000, confirmed: 'speech_1_sweep'),
+        checkpoint(positionMs: 180000, confirmed: 'speech_2_sweep'),
       );
 
       // The same database, a new store object: what a relaunch looks like.
@@ -64,7 +77,7 @@ void main() {
 
       expect(found, isNotNull);
       expect(found!.logicalPositionMs, 180000);
-      expect(found.confirmedSegmentId, 'speech_1_sweep');
+      expect(found.confirmedSegmentId, 'speech_2_sweep');
       expect(found.commandSequence, 1);
     });
 
@@ -296,6 +309,247 @@ void main() {
 
     test('a guest that was never deleted is not forgotten', () async {
       expect(await store.isForgotten('guest-2'), isFalse);
+    });
+  });
+
+  group('feedback', () {
+    Map<String, dynamic> payload({int after = 7}) => <String, dynamic>{
+      'after_score': after,
+      'helpfulness': 4,
+      'completed': true,
+      'notes': 'quieter',
+    };
+
+    test('FB-01: feedback survives a close and reopen', () async {
+      await store.saveFeedback(
+        sessionId: 's-1',
+        payload: payload(),
+        nowMs: 1000,
+      );
+      await db.close();
+
+      // Reopened from the same file path, which is what a relaunch does.
+      final Database reopened = await databaseFactory.openDatabase(
+        dbPath,
+        options: OpenDatabaseOptions(
+          version: DurableStore.schemaVersion,
+          onCreate: (Database d, int v) => DurableStore.migrate(d, 0, v),
+          onUpgrade: DurableStore.migrate,
+        ),
+      );
+      final DurableStore after = DurableStore(database: reopened);
+      final StoredFeedback? found = await after.feedbackFor('s-1');
+
+      expect(found, isNotNull);
+      expect(found!.payload['after_score'], 7);
+      expect(found.payload['notes'], 'quieter');
+      expect(found.isPending, isTrue);
+      db = reopened;
+    });
+
+    test(
+      'FB-03: saving twice for one session leaves exactly one row',
+      () async {
+        await store.saveFeedback(
+          sessionId: 's-1',
+          payload: payload(),
+          nowMs: 1000,
+        );
+        await store.saveFeedback(
+          sessionId: 's-1',
+          payload: payload(after: 9),
+          nowMs: 2000,
+        );
+
+        final List<Map<String, Object?>> rows = await db.query('feedback');
+        expect(rows, hasLength(1));
+        expect((await store.feedbackFor('s-1'))!.payload['after_score'], 9);
+      },
+    );
+
+    test('FB-04: editing preserves created_at and moves updated_at', () async {
+      await store.saveFeedback(
+        sessionId: 's-1',
+        payload: payload(),
+        nowMs: 1000,
+      );
+      await store.saveFeedback(
+        sessionId: 's-1',
+        payload: payload(after: 8),
+        nowMs: 5000,
+      );
+
+      final StoredFeedback stored = (await store.feedbackFor('s-1'))!;
+      expect(
+        stored.createdAtMs,
+        1000,
+        reason: 'delete-then-insert would have lost this',
+      );
+      expect(stored.updatedAtMs, 5000);
+    });
+
+    test('FB-05: new and edited feedback is pending', () async {
+      await store.saveFeedback(
+        sessionId: 's-1',
+        payload: payload(),
+        nowMs: 1000,
+      );
+      expect(
+        (await store.pendingFeedback()).map((StoredFeedback f) => f.sessionId),
+        <String>['s-1'],
+      );
+
+      await store.markFeedbackSynced('s-1', nowMs: 2000);
+      expect(await store.pendingFeedback(), isEmpty);
+
+      // An edit the server has not seen goes back to pending.
+      await store.saveFeedback(
+        sessionId: 's-1',
+        payload: payload(after: 3),
+        nowMs: 3000,
+      );
+      expect((await store.feedbackFor('s-1'))!.isPending, isTrue);
+    });
+
+    test('FB-06: marking synced removes it from the pending set', () async {
+      await store.saveFeedback(
+        sessionId: 's-1',
+        payload: payload(),
+        nowMs: 1000,
+      );
+      await store.markFeedbackSynced('s-1', nowMs: 2000);
+
+      final StoredFeedback stored = (await store.feedbackFor('s-1'))!;
+      expect(stored.syncState, feedbackSynced);
+      expect(stored.createdAtMs, 1000);
+    });
+
+    test('only pending and synced exist as states', () {
+      // A state nothing produces is a state nothing handles correctly.
+      expect(feedbackPending, 'pending');
+      expect(feedbackSynced, 'synced');
+    });
+
+    test(
+      'FB-09: guest deletion removes feedback with everything else',
+      () async {
+        await store.saveFeedback(
+          sessionId: 's-1',
+          payload: payload(),
+          nowMs: 1000,
+        );
+        await store.saveCheckpoint(checkpoint());
+        await store.enqueue(
+          sessionId: 's-1',
+          kind: OutboxKind.command,
+          commandId: 'c',
+          payload: <String, dynamic>{'n': 1},
+        );
+
+        await store.forgetGuest('guest-1', nowMs: 5000);
+
+        expect(await store.feedbackFor('s-1'), isNull);
+        expect(await store.pendingFeedback(), isEmpty);
+        expect(await store.pending(), isEmpty);
+        expect(await store.checkpointFor('s-1'), isNull);
+      },
+    );
+  });
+
+  group('schema', () {
+    test('a v1 database upgrades to v2 without losing data', () async {
+      // The upgrade path that matters: an installed v1 store holds the only
+      // copy of a user's queued operations, so it must migrate in place.
+      final String path = '${Directory.systemTemp.path}/p4r_v1_upgrade.db';
+      await databaseFactory.deleteDatabase(path);
+
+      final Database v1 = await databaseFactory.openDatabase(
+        path,
+        options: OpenDatabaseOptions(
+          version: 1,
+          onCreate: (Database d, int v) => DurableStore.migrate(d, 0, 1),
+        ),
+      );
+      final DurableStore old = DurableStore(database: v1);
+      await old.saveCheckpoint(
+        const Checkpoint(
+          sessionId: 'legacy',
+          planHash: 'p',
+          resolutionHash: 'r',
+          audioMode: 'audible',
+          runState: 'paused',
+          commandSequence: 4,
+          logicalPositionMs: 120000,
+          updatedAtMs: 900,
+        ),
+      );
+      await old.enqueue(
+        sessionId: 'legacy',
+        kind: OutboxKind.command,
+        commandId: 'legacy-c',
+        payload: <String, dynamic>{'command': 'pause'},
+      );
+      // v1 has no feedback table.
+      expect(
+        (await v1.query(
+          'sqlite_master',
+          where: 'type = ? AND name = ?',
+          whereArgs: <Object?>['table', 'feedback'],
+        )),
+        isEmpty,
+      );
+      await v1.close();
+
+      final Database v2 = await databaseFactory.openDatabase(
+        path,
+        options: OpenDatabaseOptions(
+          version: DurableStore.schemaVersion,
+          onCreate: (Database d, int v) => DurableStore.migrate(d, 0, v),
+          onUpgrade: DurableStore.migrate,
+        ),
+      );
+      final DurableStore upgraded = DurableStore(database: v2);
+
+      // The pre-existing rows survived.
+      final Checkpoint? kept = await upgraded.checkpointFor('legacy');
+      expect(kept, isNotNull);
+      expect(kept!.logicalPositionMs, 120000);
+      expect(kept.commandSequence, 4);
+      expect(await upgraded.pending(), hasLength(1));
+
+      // And the new table works.
+      await upgraded.saveFeedback(
+        sessionId: 'legacy',
+        payload: <String, dynamic>{'after_score': 6},
+        nowMs: 1000,
+      );
+      expect((await upgraded.feedbackFor('legacy'))!.payload['after_score'], 6);
+      expect(await v2.getVersion(), 2);
+
+      await v2.close();
+      await databaseFactory.deleteDatabase(path);
+    });
+
+    test('a fresh database opens directly at v2 with every table', () async {
+      final List<Map<String, Object?>> tables = await db.query(
+        'sqlite_master',
+        columns: <String>['name'],
+        where: 'type = ?',
+        whereArgs: <Object?>['table'],
+      );
+      final Set<String> names = tables
+          .map((Map<String, Object?> r) => r['name']! as String)
+          .toSet();
+      expect(
+        names,
+        containsAll(<String>[
+          'checkpoints',
+          'outbox',
+          'deleted_guests',
+          'feedback',
+        ]),
+      );
+      expect(await db.getVersion(), 2);
     });
   });
 

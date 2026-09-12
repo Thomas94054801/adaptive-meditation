@@ -350,3 +350,125 @@ def test_reviewer_notes_explain_guest_entry() -> None:
         assert "no account" in text
         assert "start a session" in text
         assert "delete my meditation data" in text
+
+
+# --------------------------------------------------------------------------- #
+# RG-01..RG-04 — five independent validation axes
+# --------------------------------------------------------------------------- #
+
+
+def _gate_module():
+    """Import the gate script as a module."""
+    import importlib.util
+    import sys
+    from pathlib import Path
+
+    path = Path(__file__).resolve().parents[2] / "scripts" / "store_release_gate.py"
+    spec = importlib.util.spec_from_file_location("store_release_gate", path)
+    assert spec and spec.loader
+    module = importlib.util.module_from_spec(spec)
+    sys.modules["store_release_gate"] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+def test_rg01_the_five_axes_are_independently_represented() -> None:
+    gate = _gate_module()
+    assert gate.AXES == (
+        "CI",
+        "NATIVE_INTEGRATION",
+        "ANDROID_DEVICE",
+        "IOS_DEVICE",
+        "HUMAN_LISTENING",
+    )
+    axes = gate.readiness_axes()
+    # Five separate values, not one rolled-up verdict.
+    assert set(axes) == set(gate.AXES)
+    assert len(axes) == 5
+    for axis in gate.AXES:
+        assert axes[axis] in {gate.PASS, gate.FAIL, gate.NOT_RUN, gate.BLOCKED}
+        assert gate.AXIS_MEANING[axis]
+
+
+def test_rg02_not_run_is_not_pass() -> None:
+    """The whole point: an absent result is not a passing one."""
+    gate = _gate_module()
+    assert gate.NOT_RUN != gate.PASS
+
+    axes = dict.fromkeys(gate.AXES, gate.NOT_RUN)
+    axes["CI"] = gate.PASS
+    verdicts = gate.readiness_verdicts(axes)
+    assert verdicts["STORE_RELEASE_READINESS"] == "BLOCKED"
+
+    # And NOT_RUN blocks exactly as a FAIL does.
+    failed = dict.fromkeys(gate.AXES, gate.PASS)
+    failed["ANDROID_DEVICE"] = gate.FAIL
+    assert gate.readiness_verdicts(failed)["STORE_RELEASE_READINESS"] == "BLOCKED"
+
+
+def test_rg03_ci_pass_does_not_imply_device_or_listening() -> None:
+    """CI covers unit, HTTP, widget, platform-channel and real-SQL tiers.
+
+    None of those is a device, a simulator, or a person listening, so a green
+    suite must not move any of the other four axes.
+    """
+    gate = _gate_module()
+    axes = gate.readiness_axes()
+    assert axes["CI"] == gate.PASS
+    for axis in ("NATIVE_INTEGRATION", "ANDROID_DEVICE", "IOS_DEVICE", "HUMAN_LISTENING"):
+        assert axes[axis] == gate.NOT_RUN, axis
+
+    verdicts = gate.readiness_verdicts(axes)
+    assert verdicts["CODE_MERGE_READINESS"] == "READY"
+    assert verdicts["STORE_RELEASE_READINESS"] == "BLOCKED"
+
+
+def test_rg04_store_release_needs_every_axis() -> None:
+    gate = _gate_module()
+    # Only all five passing opens it.
+    everything = dict.fromkeys(gate.AXES, gate.PASS)
+    assert gate.readiness_verdicts(everything)["STORE_RELEASE_READINESS"] == "READY"
+
+    # Each single omission blocks it on its own.
+    for axis in gate.AXES:
+        partial = dict.fromkeys(gate.AXES, gate.PASS)
+        partial[axis] = gate.NOT_RUN
+        assert gate.readiness_verdicts(partial)["STORE_RELEASE_READINESS"] == "BLOCKED", axis
+
+
+def test_code_merge_and_store_release_are_separate_verdicts() -> None:
+    """Merging code and shipping it are different questions.
+
+    Collapsing them is how a green test suite comes to be read as release
+    approval, which is the confusion this model exists to prevent.
+    """
+    gate = _gate_module()
+    verdicts = gate.readiness_verdicts(gate.readiness_axes())
+    assert set(verdicts) == {"CODE_MERGE_READINESS", "STORE_RELEASE_READINESS"}
+    assert verdicts["CODE_MERGE_READINESS"] != verdicts["STORE_RELEASE_READINESS"]
+
+
+def test_the_gate_reports_axes_in_its_json() -> None:
+    import json
+    import subprocess
+    import sys
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parents[2]
+    result = subprocess.run(
+        [sys.executable, str(root / "scripts" / "store_release_gate.py"), "--json"],
+        capture_output=True,
+        text=True,
+        cwd=root,
+    )
+    payload = json.loads(result.stdout)
+    assert set(payload["axes"]) == {
+        "CI",
+        "NATIVE_INTEGRATION",
+        "ANDROID_DEVICE",
+        "IOS_DEVICE",
+        "HUMAN_LISTENING",
+    }
+    assert payload["verdicts"]["STORE_RELEASE_READINESS"] == "BLOCKED"
+    # Still blocked, and still reporting why rather than only that.
+    assert payload["gate"] == "BLOCKED"

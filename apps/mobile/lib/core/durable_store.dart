@@ -170,11 +170,20 @@ class DurableStore {
   final Database _db;
   final OutboxQuota quota;
 
-  static const int schemaVersion = 1;
+  static const int schemaVersion = 2;
 
-  /// Create the schema. Versioned independently of the server's.
+  /// Create or upgrade the schema. Versioned independently of the server's.
+  ///
+  /// Additive by step, so an installed v1 database upgrades in place rather
+  /// than being recreated: a user's queued operations and checkpoint are the
+  /// only copy that exists, and dropping them to simplify a migration would
+  /// throw away exactly what the durable store is for.
   static Future<void> migrate(Database db, int from, int to) async {
-    if (from < 1) {
+    // Each step is gated on the target too, not just the source. Without the
+    // `to` bound, opening an older version still ran every later step, which
+    // makes a v1 database indistinguishable from a v2 one and means the
+    // upgrade path is never really exercised.
+    if (from < 1 && to >= 1) {
       await db.execute('''
         CREATE TABLE IF NOT EXISTS checkpoints (
           session_id TEXT PRIMARY KEY,
@@ -220,6 +229,28 @@ class DurableStore {
           deleted_at_ms INTEGER NOT NULL
         )
       ''');
+    }
+    if (from < 2 && to >= 2) {
+      // Program004R closeout. Feedback needs its own table rather than a
+      // place in the outbox, because the outbox deletes rows on
+      // acknowledgement and feedback has to stay readable after it syncs.
+      //
+      // session_id is the primary key and the whole identity. The server's
+      // feedback endpoint already upserts by session id and takes no command
+      // id, so a second idempotency namespace would exist only to be kept in
+      // step with nothing.
+      await db.execute('''
+        CREATE TABLE IF NOT EXISTS feedback (
+          session_id TEXT PRIMARY KEY,
+          payload TEXT NOT NULL,
+          sync_state TEXT NOT NULL,
+          created_at_ms INTEGER NOT NULL,
+          updated_at_ms INTEGER NOT NULL
+        )
+      ''');
+      await db.execute(
+        'CREATE INDEX IF NOT EXISTS idx_feedback_sync ON feedback(sync_state)',
+      );
     }
   }
 
@@ -428,6 +459,87 @@ class DurableStore {
     );
   }
 
+  // ----- feedback ----------------------------------------------------------
+
+  /// Save feedback durably, in one transaction.
+  ///
+  /// An explicit UPSERT rather than delete-then-insert: replacement semantics
+  /// would discard `created_at_ms` and, for a moment, leave no row at all for
+  /// a session whose feedback the user has already written.
+  ///
+  /// A second save for the same session is an edit, not a new record. One
+  /// session can never produce two rows, which the primary key enforces rather
+  /// than the application remembering to.
+  Future<void> saveFeedback({
+    required String sessionId,
+    required Map<String, dynamic> payload,
+    required int nowMs,
+  }) async {
+    final String encoded = jsonEncode(payload);
+    await _db.transaction<void>((Transaction txn) async {
+      await txn.rawInsert(
+        'INSERT INTO feedback '
+        '(session_id, payload, sync_state, created_at_ms, updated_at_ms) '
+        'VALUES (?, ?, ?, ?, ?) '
+        'ON CONFLICT(session_id) DO UPDATE SET '
+        '  payload = excluded.payload, '
+        // An edit returns the row to pending: the server has not seen this
+        // version yet, whatever it saw before.
+        '  sync_state = ?, '
+        '  updated_at_ms = excluded.updated_at_ms',
+        <Object?>[
+          sessionId,
+          encoded,
+          feedbackPending,
+          nowMs,
+          nowMs,
+          feedbackPending,
+        ],
+      );
+    });
+  }
+
+  Future<StoredFeedback?> feedbackFor(String sessionId) async {
+    final List<Map<String, Object?>> rows = await _db.query(
+      'feedback',
+      where: 'session_id = ?',
+      whereArgs: <Object?>[sessionId],
+    );
+    return rows.isEmpty ? null : StoredFeedback.fromRow(rows.first);
+  }
+
+  /// Feedback a later synchronisation may consume.
+  ///
+  /// This is the whole of "pending-sync" in Program004R: a queryable local
+  /// state. There is no worker, no scheduler and no connectivity listener.
+  Future<List<StoredFeedback>> pendingFeedback({int limit = 100}) async {
+    final List<Map<String, Object?>> rows = await _db.query(
+      'feedback',
+      where: 'sync_state = ?',
+      whereArgs: <Object?>[feedbackPending],
+      orderBy: 'updated_at_ms ASC',
+      limit: limit,
+    );
+    return rows.map(StoredFeedback.fromRow).toList(growable: false);
+  }
+
+  /// Record that the existing foreground request succeeded.
+  ///
+  /// Failing to mark it is safe: the row stays pending and the server upserts
+  /// by session id, so a later attempt writes the same thing again. That is
+  /// why there is no distributed-transaction machinery here.
+  Future<void> markFeedbackSynced(
+    String sessionId, {
+    required int nowMs,
+  }) async {
+    await _db.update(
+      'feedback',
+      <String, Object?>{'sync_state': feedbackSynced, 'updated_at_ms': nowMs},
+      where: 'session_id = ?',
+      whereArgs: <Object?>[sessionId],
+    );
+  }
+
   // ----- deletion ----------------------------------------------------------
 
   /// Erase a guest locally and fence anything still in flight.
@@ -438,6 +550,7 @@ class DurableStore {
     await _db.transaction<void>((Transaction txn) async {
       await txn.delete('outbox');
       await txn.delete('checkpoints');
+      await txn.delete('feedback');
       await txn.insert('deleted_guests', <String, Object?>{
         'guest_id': guestId,
         'deleted_at_ms': nowMs,
@@ -453,6 +566,40 @@ class DurableStore {
     );
     return rows.isNotEmpty;
   }
+}
+
+/// The two sync states this program actually uses.
+///
+/// No `rejected` and no conflict states: nothing writes or reads them yet, and
+/// a state no code produces is a state no code handles correctly.
+const String feedbackPending = 'pending';
+const String feedbackSynced = 'synced';
+
+/// Feedback as it sits on disk.
+class StoredFeedback {
+  const StoredFeedback({
+    required this.sessionId,
+    required this.payload,
+    required this.syncState,
+    required this.createdAtMs,
+    required this.updatedAtMs,
+  });
+
+  factory StoredFeedback.fromRow(Map<String, Object?> row) => StoredFeedback(
+    sessionId: row['session_id']! as String,
+    payload: jsonDecode(row['payload']! as String) as Map<String, dynamic>,
+    syncState: row['sync_state']! as String,
+    createdAtMs: row['created_at_ms']! as int,
+    updatedAtMs: row['updated_at_ms']! as int,
+  );
+
+  final String sessionId;
+  final Map<String, dynamic> payload;
+  final String syncState;
+  final int createdAtMs;
+  final int updatedAtMs;
+
+  bool get isPending => syncState == feedbackPending;
 }
 
 class OutboxUsage {

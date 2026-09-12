@@ -1,5 +1,6 @@
 import 'package:adaptive_meditation/app/app_scope.dart';
 import 'package:adaptive_meditation/core/api.dart';
+import 'package:adaptive_meditation/core/durable_store.dart';
 import 'package:adaptive_meditation/core/guest.dart';
 import 'package:adaptive_meditation/core/models.dart';
 import 'package:adaptive_meditation/features/history/history_store.dart';
@@ -24,6 +25,7 @@ Widget wrap(
   SessionHistoryStore? history,
   PlatformAdapters? adapters,
   SecureIdentityStore? store,
+  DurableStore? durableStore,
 }) {
   final SecureIdentityStore identityStore = store ?? InMemoryIdentityStore();
   return AppScope(
@@ -33,6 +35,7 @@ Widget wrap(
     adapters:
         adapters ??
         PlatformAdapters(storage: SecureStorageProviderAdapter(identityStore)),
+    store: durableStore,
     child: MaterialApp(home: child),
   );
 }

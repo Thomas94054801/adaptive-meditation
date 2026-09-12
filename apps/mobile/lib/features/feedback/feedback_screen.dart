@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../app/app_scope.dart';
 import '../../core/api.dart';
+import '../../core/durable_store.dart';
 import '../../core/models.dart';
 import '../history/history_store.dart';
 
@@ -45,6 +46,17 @@ class _FeedbackScreenState extends State<FeedbackScreen> {
     super.dispose();
   }
 
+  /// Save durably, then tell the server once.
+  ///
+  /// The order is the whole point. Program004R could lose a session's feedback
+  /// to a dropped connection, because the only copy lived in the request. Now
+  /// a local commit is what lets the user leave, and the network is a
+  /// best-effort follow-up: an unreachable backend leaves the row `pending` and
+  /// does not trap anyone on this screen.
+  ///
+  /// A failed *local* write is different, and is reported as a failure: the
+  /// screen stays, because there is nothing anywhere that remembers what was
+  /// typed.
   Future<void> _submit() async {
     setState(() {
       _busy = true;
@@ -52,42 +64,73 @@ class _FeedbackScreenState extends State<FeedbackScreen> {
     });
     final AppScope scope = AppScope.of(context);
     final NavigatorState navigator = Navigator.of(context);
-    try {
-      await scope.api.submitFeedback(
-        widget.session.id,
-        SessionFeedback(
-          afterScore: _stress,
-          helpfulness: _helpfulness,
-          completed: widget.completed,
-          beforeScore: widget.beforeState.stress,
-          notes: _notes.text.trim().isEmpty ? null : _notes.text.trim(),
-          stressAfter: _stress,
-          energyAfter: _energy,
-          mentalActivityAfter: _mentalActivity,
-          sleepinessAfter: _sleepiness,
-          completionRatio: widget.completionRatio,
-        ),
-      );
-      scope.history.add(
-        SessionHistoryEntry(
+    final SessionFeedback feedback = SessionFeedback(
+      afterScore: _stress,
+      helpfulness: _helpfulness,
+      completed: widget.completed,
+      beforeScore: widget.beforeState.stress,
+      notes: _notes.text.trim().isEmpty ? null : _notes.text.trim(),
+      stressAfter: _stress,
+      energyAfter: _energy,
+      mentalActivityAfter: _mentalActivity,
+      sleepinessAfter: _sleepiness,
+      completionRatio: widget.completionRatio,
+    );
+
+    final DurableStore? store = scope.store;
+    if (store != null) {
+      try {
+        await store.saveFeedback(
           sessionId: widget.session.id,
-          practiceName: widget.session.recommendation.practicePublicName,
-          durationMinutes: widget.session.recommendation.durationMinutes,
-          completed: widget.completed,
-          recordedAt: DateTime.now(),
-          afterScore: _stress,
-        ),
-      );
-      navigator.popUntil((Route<void> route) => route.isFirst);
-    } on ApiException catch (error) {
-      if (mounted) {
-        setState(() => _error = error.message);
-      }
-    } finally {
-      if (mounted) {
-        setState(() => _busy = false);
+          payload: feedback.toJson(),
+          nowMs: DateTime.now().millisecondsSinceEpoch,
+        );
+      } on Object catch (error) {
+        // Nothing was saved, so nothing may be claimed. Stay put.
+        if (mounted) {
+          setState(() {
+            _error = 'Could not save your feedback on this device: $error';
+            _busy = false;
+          });
+        }
+        return;
       }
     }
+
+    // Durably saved. From here the user may leave whatever the network does.
+    scope.history.add(
+      SessionHistoryEntry(
+        sessionId: widget.session.id,
+        practiceName: widget.session.recommendation.practicePublicName,
+        durationMinutes: widget.session.recommendation.durationMinutes,
+        completed: widget.completed,
+        recordedAt: DateTime.now(),
+        afterScore: _stress,
+      ),
+    );
+
+    // The existing foreground request, attempted once. No retry scheduler, no
+    // connectivity listener, no background worker - a later program may consume
+    // the pending rows.
+    try {
+      await scope.api.submitFeedback(widget.session.id, feedback);
+      await store?.markFeedbackSynced(
+        widget.session.id,
+        nowMs: DateTime.now().millisecondsSinceEpoch,
+      );
+    } on ApiException {
+      // Left pending on purpose. The server upserts by session id, so writing
+      // the same thing again later is harmless.
+    } on Object {
+      // Marking synced failed after the server accepted it. Also safe, for the
+      // same reason, and not worth distributed-transaction machinery.
+    }
+
+    if (!mounted) {
+      return;
+    }
+    setState(() => _busy = false);
+    navigator.popUntil((Route<void> route) => route.isFirst);
   }
 
   @override

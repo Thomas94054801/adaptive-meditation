@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:flutter/widgets.dart';
 
 import '../core/api.dart';
+import '../core/durable_store.dart';
 import '../core/guest.dart';
 import '../features/history/history_store.dart';
 import '../platform/audio_player_port.dart';
@@ -22,6 +23,7 @@ class AppScope extends InheritedWidget {
     super.key,
     this.player,
     this.mediaDirectory,
+    this.store,
   });
 
   final MeditationApi api;
@@ -40,6 +42,11 @@ class AppScope extends InheritedWidget {
   /// Where prepared audio is written. Null when nothing will be prepared.
   final Directory? mediaDirectory;
 
+  /// The durable local store. Null in widget tests that assert nothing about
+  /// persistence; those keep the pre-Program004R behaviour of posting straight
+  /// to the backend.
+  final DurableStore? store;
+
   static AppScope of(BuildContext context) {
     final AppScope? scope = context
         .dependOnInheritedWidgetOfExactType<AppScope>();
@@ -54,5 +61,6 @@ class AppScope extends InheritedWidget {
       history != oldWidget.history ||
       adapters != oldWidget.adapters ||
       player != oldWidget.player ||
-      mediaDirectory != oldWidget.mediaDirectory;
+      mediaDirectory != oldWidget.mediaDirectory ||
+      store != oldWidget.store;
 }

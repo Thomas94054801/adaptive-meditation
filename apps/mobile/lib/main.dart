@@ -17,6 +17,7 @@ Future<void> main() async {
       adapters: runtime.adapters,
       player: runtime.player,
       mediaDirectory: runtime.mediaDirectory,
+      store: runtime.store,
     ),
   );
 }

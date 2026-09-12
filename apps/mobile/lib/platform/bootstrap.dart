@@ -1,6 +1,9 @@
 import 'dart:io';
 
 import 'package:path_provider/path_provider.dart';
+import 'package:sqflite/sqflite.dart';
+
+import '../core/durable_store.dart';
 
 import 'audio_player_port.dart';
 import 'native_audio_player.dart';
@@ -23,6 +26,7 @@ class AudioRuntimeAdapters {
     required this.session,
     required this.tts,
     required this.mediaDirectory,
+    required this.store,
   });
 
   final PlatformAdapters adapters;
@@ -34,6 +38,10 @@ class AudioRuntimeAdapters {
   /// OS may clear a cache directory between launches, and a prepared session
   /// must survive to be resumable.
   final Directory mediaDirectory;
+
+  /// The durable local store, opened at bootstrap so a failure to open it is
+  /// visible at start-up rather than at the moment a user saves feedback.
+  final DurableStore store;
 }
 
 /// Build the production adapter set. Called once, from `main`.
@@ -59,6 +67,18 @@ Future<AudioRuntimeAdapters> bootstrapAudioRuntime({
   // 3. Then the player, which owns neither interruptions nor activation.
   final AudioPlayerPort player = NativeAudioPlayer();
 
+  // 4. The durable store. Application support rather than cache, for the same
+  // reason as the audio: the OS may clear a cache directory and a queued
+  // operation is the only copy that exists.
+  final Database database = await openDatabase(
+    '${support.path}/program004r.db',
+    version: DurableStore.schemaVersion,
+    onCreate: (Database db, int version) =>
+        DurableStore.migrate(db, 0, version),
+    onUpgrade: DurableStore.migrate,
+  );
+  final DurableStore durableStore = DurableStore(database: database);
+
   return AudioRuntimeAdapters(
     adapters: PlatformAdapters(
       tts: tts,
@@ -69,6 +89,7 @@ Future<AudioRuntimeAdapters> bootstrapAudioRuntime({
     session: session,
     tts: tts,
     mediaDirectory: media,
+    store: durableStore,
   );
 }
 
