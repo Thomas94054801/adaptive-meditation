@@ -96,6 +96,15 @@ jobs:
         run: python scripts/check_compliance_consistency.py
         working-directory: ${{ github.workspace }}
 
+      - name: Audio assets are generated, not imported
+        working-directory: ${{ github.workspace }}
+        run: |
+          # Regenerates the bells and compares them byte for byte against what
+          # is committed. A swapped file, an imported sample, or a manifest that
+          # no longer matches its generator all fail here - which is the point:
+          # audio with unclear provenance must not reach a store build.
+          python scripts/generate_bells.py --check
+
       - name: Compare rule sets
         working-directory: backend
         run: |
@@ -137,6 +146,20 @@ jobs:
       - name: Tests
         working-directory: backend
         run: pytest -v
+
+      - name: Performance budgets
+        working-directory: backend
+        env:
+          TEST_DATABASE_URL: ${{ env.TEST_DATABASE_URL }}
+        run: |
+          # A shared CI runner is not a benchmark environment, so these numbers
+          # are never reported as performance figures. The step exists to catch
+          # an order-of-magnitude regression - a path that starts doing a query
+          # per segment, say - which is visible even through runner noise. The
+          # budgets it checks have roughly two orders of magnitude of headroom
+          # locally, so runner variance alone cannot fail it.
+          alembic upgrade head
+          python scripts/benchmark_paths.py --runs 30
 
   android-store-readiness:
     name: Android store readiness
