@@ -105,6 +105,14 @@ jobs:
           # audio with unclear provenance must not reach a store build.
           python scripts/generate_bells.py --check
 
+      - name: Cross-language timing fixtures are current
+        working-directory: backend
+        run: |
+          # The Python and Dart resolution implementations are tested against
+          # this file. Regenerating it and comparing byte for byte is what
+          # stops one side changing the canonicalisation without the other.
+          python scripts/generate_timing_fixtures.py --check
+
       - name: Compare rule sets
         working-directory: backend
         run: |
@@ -318,7 +326,7 @@ jobs:
 
       - run: flutter pub get
 
-      - run: flutter analyze
+      - run: flutter analyze --fatal-infos
 
       - run: flutter test
 

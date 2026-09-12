@@ -1,0 +1,258 @@
+{
+  "task": "PROGRAM004R_IMPLEMENT_REAL_AUDIO_DURABLE_PLAYBACK_AND_EVIDENCE",
+  "schema_version": 1,
+  "note": "Evidence for the Program004R candidate. Every row's result is what was actually observed on the code SHA below. Rows that need hardware this environment does not have are NOT_RUN with the reason, never inferred from a lower tier.",
+  "candidate": {
+    "code_sha": "ff784b8fae2db052824f3a1379938eec2a5ebacd",
+    "branch": "program004r/real-audio-durable-playback",
+    "sdd_amendment_sha": "020afe43958212dade3cde8ad4c928e6ac6a423f",
+    "reviewed_sdd_sha": "dc93e848304e8e15156a64e56d8cebb7e1b8b132",
+    "base_pr4_head": "d1d06742a9f5506161559b7f79ee054fb80bf115",
+    "dependency_lock_sha256": "3f894e401dc3591c3f024800a1338389b86a30d9ca8d8f32286c3c38e1024400",
+    "timing_fixtures_sha256": "8d5c371eedcb577604ee89e6244384addc33a30a845660fc014100b4be700472",
+    "note": "A docs-only closure commit that records CI results will necessarily have a later SHA than the code it describes. The two are listed separately so no artifact has to reference its own future commit."
+  },
+  "environments": {
+    "local": {
+      "kind": "developer workstation",
+      "platform": "Apple Silicon arm64, macOS 25.6",
+      "python": "3.12.14",
+      "postgres": "16.15 local",
+      "flutter": "3.47.3",
+      "dart": "3.13.3",
+      "note": "Never reported as an OCI measurement."
+    },
+    "ci": {
+      "kind": "GitHub hosted runners",
+      "note": "Filled in from the run below."
+    },
+    "device": {
+      "kind": "none available",
+      "detail": "No full Xcode (Command Line Tools only, so no iOS simulator), no Android SDK or emulator, and no connected device. Verified by xcodebuild -version failing and flutter devices reporting none."
+    }
+  },
+  "tiers": {
+    "UNIT": "pure logic, no I/O",
+    "HTTP": "FastAPI TestClient against PostgreSQL 16",
+    "WIDGET": "flutter_test widget and unit tests",
+    "PLATFORM_CHANNEL": "the real production adapter making real MethodChannel calls with only the operating system replaced",
+    "REAL_SQL": "the real SQLite engine on the host via sqflite_common_ffi",
+    "NATIVE_SIMULATOR": "iOS simulator",
+    "NATIVE_EMULATOR": "Android emulator",
+    "ANDROID_DEVICE": "physical Android device",
+    "IOS_DEVICE": "physical iOS device",
+    "HUMAN_LISTENING": "a person listening, recorded by voice and locale"
+  },
+  "cases": [
+    {
+      "case": "R01",
+      "behaviour": "A later required segment failing prevents audio-ready entirely",
+      "tiers": [
+        "WIDGET"
+      ],
+      "result": "PASS",
+      "evidence": "apps/mobile/test/prepare_controller_test.dart::R01: a later segment failing means no ready at all",
+      "note": ""
+    },
+    {
+      "case": "R02",
+      "behaviour": "Complete local plan and assets with the backend unreachable still resolves and plays",
+      "tiers": [
+        "WIDGET"
+      ],
+      "result": "PARTIAL",
+      "evidence": "prepare_controller_test.dart (local resolution needs no server); no offline playback run",
+      "note": "Local resolution and readiness need no backend and are tested. Playing offline on a device is NOT_RUN."
+    },
+    {
+      "case": "R03",
+      "behaviour": "Python and Dart canonicalisation and hashes agree; tampering is rejected",
+      "tiers": [
+        "UNIT",
+        "WIDGET",
+        "HTTP"
+      ],
+      "result": "PASS",
+      "evidence": "backend/tests/test_resolution.py + apps/mobile/test/resolution_contract_test.dart against contracts/timing_fixtures.v1.json",
+      "note": ""
+    },
+    {
+      "case": "R04",
+      "behaviour": "TTS queued, timeout, cancel and late callback never produce ready",
+      "tiers": [
+        "PLATFORM_CHANNEL"
+      ],
+      "result": "PASS",
+      "evidence": "apps/mobile/test/native_tts_adapter_test.dart (9 cases)",
+      "note": ""
+    },
+    {
+      "case": "R05",
+      "behaviour": "Same inputs producing different bytes do not overwrite; pins survive; LRU spares the next segment",
+      "tiers": [
+        "WIDGET"
+      ],
+      "result": "PASS",
+      "evidence": "apps/mobile/test/audio_cache_test.dart (11 cases)",
+      "note": ""
+    },
+    {
+      "case": "R06",
+      "behaviour": "Long silence after lock screen advances; UI destroy and re-attach makes no second player",
+      "tiers": [
+        "NATIVE_EMULATOR",
+        "ANDROID_DEVICE",
+        "IOS_DEVICE"
+      ],
+      "result": "NOT_RUN",
+      "evidence": "",
+      "note": "Requires a device or emulator. The runtime's attach/detach and stale-callback rules are unit-tested, which is not the same claim."
+    },
+    {
+      "case": "R07",
+      "behaviour": "Real interruption and noisy events stop sound first; focus regain does not autoplay",
+      "tiers": [
+        "WIDGET",
+        "ANDROID_DEVICE",
+        "IOS_DEVICE"
+      ],
+      "result": "PARTIAL",
+      "evidence": "playback_runtime_test.dart (pause before state write, resume only by user); native_audio_session.dart constructed with handleInterruptions:false",
+      "note": "Policy verified in code and tests. Real OS interruption behaviour is NOT_RUN."
+    },
+    {
+      "case": "R08",
+      "behaviour": "Player playing/ready/seek cannot fake segment completion",
+      "tiers": [
+        "WIDGET"
+      ],
+      "result": "PASS",
+      "evidence": "apps/mobile/test/playback_runtime_test.dart (R08 cases)",
+      "note": ""
+    },
+    {
+      "case": "R09",
+      "behaviour": "Lost ACK, concurrent resend, out-of-order snapshot, same id different payload",
+      "tiers": [
+        "HTTP",
+        "UNIT",
+        "WIDGET"
+      ],
+      "result": "PASS",
+      "evidence": "backend/tests/test_command_identity.py (10 cases) + apps/mobile/test/reconciliation_test.dart (10 cases)",
+      "note": ""
+    },
+    {
+      "case": "R10",
+      "behaviour": "Offline kill and relaunch resumes at a confirmed boundary with the queue intact",
+      "tiers": [
+        "REAL_SQL"
+      ],
+      "result": "PARTIAL",
+      "evidence": "apps/mobile/test/durable_store_test.dart (checkpoint survives reopen, resumable selection)",
+      "note": "Durability proven against real SQLite. An OS actually killing the process is NOT_RUN."
+    },
+    {
+      "case": "R11",
+      "behaviour": "Outbox quota, disk-full and crash window lose nothing critical and never claim a false save",
+      "tiers": [
+        "REAL_SQL",
+        "WIDGET"
+      ],
+      "result": "PARTIAL",
+      "evidence": "durable_store_test.dart quota group; audio_cache_test.dart partial-file sweep; prepare_controller_test.dart storage failure",
+      "note": "Quotas, atomic publish and partial sweep are tested. Power-loss durability is explicitly untested."
+    },
+    {
+      "case": "R12",
+      "behaviour": "A bell, silent mode and a synthesis callback do not trigger voice exposure; speech does",
+      "tiers": [
+        "WIDGET"
+      ],
+      "result": "PASS",
+      "evidence": "apps/mobile/test/playback_runtime_test.dart (R12 cases)",
+      "note": ""
+    },
+    {
+      "case": "R13",
+      "behaviour": "Completion, feedback and history agree; legacy sessions are not upgraded",
+      "tiers": [
+        "WIDGET",
+        "HTTP"
+      ],
+      "result": "PARTIAL",
+      "evidence": "playback_runtime_test.dart (duration-weighted ratio, no double count, silent not audible); player_screen finishes a planless session as silent",
+      "note": "Completion semantics implemented and tested. Durable feedback save and the pending-sync surface are not implemented: Slice E is PARTIAL."
+    },
+    {
+      "case": "R14",
+      "behaviour": "Deletion with in-flight requests does not resurrect data",
+      "tiers": [
+        "HTTP",
+        "REAL_SQL"
+      ],
+      "result": "PASS",
+      "evidence": "test_command_identity.py::test_a_deleted_guest_command_does_not_recreate_anything + durable_store_test.dart R14 group",
+      "note": ""
+    },
+    {
+      "case": "R15",
+      "behaviour": "Production composition and bundled assets are real",
+      "tiers": [
+        "WIDGET",
+        "PLATFORM_CHANNEL"
+      ],
+      "result": "PASS",
+      "evidence": "apps/mobile/test/production_wiring_test.dart + backend/tests/test_audio.py::test_every_bell_is_declared_as_a_bundled_flutter_asset",
+      "note": ""
+    },
+    {
+      "case": "R16",
+      "behaviour": "Rollback and upgrade keep data and never degrade silently",
+      "tiers": [
+        "HTTP"
+      ],
+      "result": "PARTIAL",
+      "evidence": "migrations 0006 and 0007 round-trip additively with no pending diff; SDD 13A forbids the silent-stub rollbacks",
+      "note": "Migration compatibility is tested. The forbidden rollbacks are a design constraint, not something a test can assert."
+    }
+  ],
+  "budgets": {
+    "note": "Every device-side budget is NOT_RUN for want of hardware. No local workstation number is substituted for a device number.",
+    "measured": {
+      "backend_paths": "see docs/PROGRAM004_STATUS.md; unchanged by this program's shape"
+    },
+    "not_run": [
+      "warm full prepare",
+      "cold full prepare",
+      "full-ready to first output (warm and cold)",
+      "pause intent to audio stopped",
+      "resume to output",
+      "boundary drift",
+      "relaunch to resumable UI",
+      "checkpoint transaction latency",
+      "client audio memory (attributable RSS including native buffers)"
+    ]
+  },
+  "dispositions": {
+    "SDD": "ACCEPTED_WITH_BINDING_AMENDMENTS_APPLIED",
+    "IMPLEMENTATION": "PARTIAL",
+    "CI": "PENDING",
+    "NATIVE_INTEGRATION": "NOT_RUN",
+    "ANDROID_DEVICE": "NOT_RUN",
+    "IOS_DEVICE": "NOT_RUN",
+    "HUMAN_LISTENING": "NOT_RUN",
+    "REMOTE": "PENDING",
+    "STORE_RELEASE": "BLOCKED"
+  },
+  "g6": {
+    "hypothesis": "Unawaited command delivery plus unconditional sequence adoption pushes the client sequence backwards, after which later commands are dropped as replays and the run accepts nothing while looking alive.",
+    "disposition": "CONFIRMED_BY_INSPECTION_NOT_REPRODUCED",
+    "why_not_reproduced": "Reproducing it requires the pre-fix adopt(), which assigned any incoming sequence unconditionally. Keeping that method alive only to fail a test would mean shipping the defect. A first attempt simulated it with local variables, which asserted nothing about this program, and was deleted rather than kept as a red test.",
+    "what_is_tested_instead": "The guard driven through the exact interleaving the hypothesis describes, plus the invariant that the run still accepts commands afterwards, plus the server-side invariant that an older command never lowers the stored sequence.",
+    "evidence": [
+      "apps/mobile/test/reconciliation_test.dart::the G6 interleaving is refused rather than applied",
+      "backend/tests/test_command_identity.py::test_G6_an_older_response_never_lowers_the_servers_sequence"
+    ]
+  }
+}
