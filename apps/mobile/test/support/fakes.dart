@@ -78,8 +78,13 @@ class FakeMeditationApi implements MeditationApi {
 
   static String _key(String letter) => letter * 64;
 
-  /// A typed plan shaped like the backend's: bells at both ends, speech
-  /// followed by its silence, markers between stages.
+  /// A typed plan copied from real planner output.
+  ///
+  /// Produced by build_plan for body_awareness at ten minutes and transcribed
+  /// verbatim, rather than hand-authored. An earlier version invented a
+  /// 471,000 ms silence that no plan can actually produce, which made every
+  /// test using it weaker evidence and hid the fact that the real maximum is
+  /// 323,692 ms across all practices and durations.
   static final SessionPlanV2 typedPlan = SessionPlanV2(
     planHash: _key('a'),
     definitionId: _key('b'),
@@ -100,16 +105,17 @@ class FakeMeditationApi implements MeditationApi {
       TimelineSegment(
         id: 'speech_0_arrive',
         kind: SegmentKind.speech,
-        nominalMs: 8000,
-        text: 'Feel the points where your body meets the chair.',
-        transcript: 'Feel the points where your body meets the chair.',
+        nominalMs: 11077,
+        text: 'For the next 10 minutes, let attention come down into the body.',
+        transcript:
+            'For the next 10 minutes, let attention come down into the body.',
         renderKey: _key('c'),
       ),
       const TimelineSegment(
         id: 'silence_0_arrive',
         kind: SegmentKind.silence,
-        nominalMs: 52000,
-        minMs: 20800,
+        nominalMs: 33923,
+        minMs: 13569,
         elastic: true,
       ),
       const TimelineSegment(
@@ -119,40 +125,93 @@ class FakeMeditationApi implements MeditationApi {
         markerId: 'arrive',
       ),
       TimelineSegment(
-        id: 'speech_1_sweep',
+        id: 'speech_1_settle',
         kind: SegmentKind.speech,
-        nominalMs: 9000,
-        text: 'Move attention slowly from the feet upward.',
-        transcript: 'Move attention slowly from the feet upward.',
+        nominalMs: 10154,
+        text:
+            'Scan the jaw, the shoulders and the hands. Where there is gripping, let it go.',
+        transcript:
+            'Scan the jaw, the shoulders and the hands. Where there is gripping, let it go.',
         renderKey: _key('d'),
       ),
       const TimelineSegment(
-        id: 'silence_1_sweep',
+        id: 'silence_1_settle',
         kind: SegmentKind.silence,
-        nominalMs: 471000,
-        minMs: 188400,
+        nominalMs: 94846,
+        minMs: 37938,
         elastic: true,
       ),
       const TimelineSegment(
-        id: 'marker_1_sweep',
+        id: 'marker_1_settle',
+        kind: SegmentKind.marker,
+        nominalMs: 0,
+        markerId: 'settle',
+      ),
+      TimelineSegment(
+        id: 'speech_2_sweep',
+        kind: SegmentKind.speech,
+        nominalMs: 9692,
+        text:
+            'Move attention slowly from the feet upward. Feel each part in turn.',
+        transcript:
+            'Move attention slowly from the feet upward. Feel each part in turn.',
+        renderKey: _key('e'),
+      ),
+      const TimelineSegment(
+        id: 'silence_2_sweep',
+        kind: SegmentKind.silence,
+        nominalMs: 260308,
+        minMs: 104123,
+        elastic: true,
+      ),
+      const TimelineSegment(
+        id: 'marker_2_sweep',
         kind: SegmentKind.marker,
         nominalMs: 0,
         markerId: 'sweep',
       ),
       TimelineSegment(
-        id: 'speech_2_close',
+        id: 'speech_3_rest',
         kind: SegmentKind.speech,
-        nominalMs: 7000,
-        text: 'Move your fingers before you finish.',
-        transcript: 'Move your fingers before you finish.',
-        renderKey: _key('e'),
+        nominalMs: 8769,
+        text: 'Let the whole body be felt at once, as one sensation.',
+        transcript: 'Let the whole body be felt at once, as one sensation.',
+        renderKey: _key('f'),
       ),
       const TimelineSegment(
-        id: 'silence_2_close',
+        id: 'silence_3_rest',
         kind: SegmentKind.silence,
-        nominalMs: 53000,
-        minMs: 21200,
+        nominalMs: 104231,
+        minMs: 41692,
         elastic: true,
+      ),
+      const TimelineSegment(
+        id: 'marker_3_rest',
+        kind: SegmentKind.marker,
+        nominalMs: 0,
+        markerId: 'rest',
+      ),
+      TimelineSegment(
+        id: 'speech_4_close',
+        kind: SegmentKind.speech,
+        nominalMs: 7846,
+        text: 'Notice how the body feels now compared with when you began.',
+        transcript:
+            'Notice how the body feels now compared with when you began.',
+        renderKey: _key('g'),
+      ),
+      const TimelineSegment(
+        id: 'silence_4_close',
+        kind: SegmentKind.silence,
+        nominalMs: 59154,
+        minMs: 23661,
+        elastic: true,
+      ),
+      const TimelineSegment(
+        id: 'marker_4_close',
+        kind: SegmentKind.marker,
+        nominalMs: 0,
+        markerId: 'close',
       ),
       const TimelineSegment(
         id: 'bell_close',

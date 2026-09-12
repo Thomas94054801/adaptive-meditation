@@ -26,7 +26,10 @@ class PlayableSegment {
   final int expectedMs;
 
   /// `speech`, `silence` or `bell`. The runtime needs the distinction because
-  /// only speech carries voice-experiment exposure.
+  /// only speech carries voice-experiment exposure, and the player needs it
+  /// because a silence entry is a *clip* of a shared source rather than a
+  /// whole file: [uri] points at the bundled silence asset and [expectedMs] is
+  /// the clip length.
   final String kind;
 
   /// Whether completion requires this segment to have played.

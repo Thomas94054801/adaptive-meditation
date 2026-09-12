@@ -45,6 +45,22 @@
       "bit_depth": 16,
       "duration_ms": 1200,
       "sha256": "cdcec2838d22ba678f0a52735b905b8b8cb4e7142aae7be6ec2705f978f997b2"
+    },
+    {
+      "file": "apps/mobile/assets/audio/silence/silence.wav",
+      "flutter_asset": "assets/audio/silence/silence.wav",
+      "asset_key": "silence.source",
+      "purpose": "The source every silence segment is clipped out of, so silence is scheduled by the native audio pipeline and reports its own completion instead of being waited out by a timer.",
+      "origin": "generated",
+      "generator": "scripts/generate_bells.py",
+      "license": "Project-owned. Zero samples, written by the generator.",
+      "third_party_content": false,
+      "sample_rate_hz": 8000,
+      "channels": 1,
+      "bit_depth": 16,
+      "duration_ms": 330000,
+      "raw_bytes": 5280000,
+      "sha256": "9c25efe9fe096ea99cda9ec77233e6a9a77f5e57827043c81c8e10e87a800172"
     }
   ]
 }

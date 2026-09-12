@@ -86,9 +86,14 @@ void main() {
   });
 
   test('R08: skipping a required segment prevents completion', () async {
-    // Everything completes except one speech segment.
+    // The skipped segment is read off the plan rather than named literally, so
+    // this keeps testing "one required segment missing" whatever the fixture
+    // contains.
+    final String skippedSegmentId = plan.speech.last.id;
+
+    // Everything completes except that one speech segment.
     for (final ResolvedSegment segment in resolutionFor().segments) {
-      if (segment.kind == 'marker' || segment.segmentId == 'speech_1_sweep') {
+      if (segment.kind == 'marker' || segment.segmentId == skippedSegmentId) {
         continue;
       }
       player.emitStarted(segment.segmentId);

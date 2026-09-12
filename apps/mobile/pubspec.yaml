@@ -57,3 +57,8 @@ flutter:
     # here because a file in the repository that is not bundled cannot be
     # played - which is exactly what Program004 shipped.
     - assets/audio/bells/
+    # The source every silence segment is clipped out of. Silence has to be
+    # real media so the native pipeline schedules it and reports completion;
+    # just_audio's SilenceAudioSource is Android-only, so a clipped asset is
+    # the cross-platform mechanism.
+    - assets/audio/silence/

@@ -111,8 +111,20 @@ void main() {
     });
 
     test('resume rewinds inside speech and stands still inside silence', () {
-      expect(plan.resumePosition(2000 + 4000), 2000);
-      expect(plan.resumePosition(10000 + 1000), 11000);
+      // Positions are derived from the plan rather than written as literals.
+      // The literals used to encode a fixture geometry that no real plan
+      // produces, so they broke the moment the fixture became truthful.
+      final ScheduledSegment speech = plan.schedule.firstWhere(
+        (ScheduledSegment s) => s.segment.isSpeech,
+      );
+      final int insideSpeech = speech.startMs + speech.durationMs ~/ 2;
+      expect(plan.resumePosition(insideSpeech), speech.startMs);
+
+      final ScheduledSegment silence = plan.schedule.firstWhere(
+        (ScheduledSegment s) => s.segment.isSilence,
+      );
+      final int insideSilence = silence.startMs + silence.durationMs ~/ 2;
+      expect(plan.resumePosition(insideSilence), insideSilence);
     });
 
     test('the last spoken line stays on screen through the silence', () {
@@ -186,10 +198,16 @@ void main() {
     test('seeking to the resume point never lands mid-utterance', () {
       final PlaybackController c = controller(
         state: RunState.paused,
-        positionMs: 2000 + 4000,
+        // Mid-utterance, taken from the plan.
+        positionMs: 2000 + 1000,
       );
       c.seekToResumePoint();
-      expect(c.positionMs, 2000);
+      expect(
+        c.positionMs,
+        plan.schedule
+            .firstWhere((ScheduledSegment s) => s.segment.isSpeech)
+            .startMs,
+      );
     });
   });
 

@@ -65,9 +65,7 @@ class NativeAudioPlayer implements AudioPlayerPort {
     _sequenceComplete = false;
 
     final List<AudioSource> sources = segments
-        .map<AudioSource>(
-          (PlayableSegment s) => AudioSource.uri(Uri.parse(s.uri)),
-        )
+        .map<AudioSource>(_sourceFor)
         .toList(growable: false);
 
     try {
@@ -90,6 +88,27 @@ class NativeAudioPlayer implements AudioPlayerPort {
     // completed, and the new index is the one starting.
     _indexSub ??= _player.currentIndexStream.listen(_onIndex);
     _stateSub ??= _player.playerStateStream.listen(_onState);
+  }
+
+  /// One playlist entry per segment.
+  ///
+  /// Silence is a clip out of the shared bundled source rather than a file of
+  /// its own. `SilenceAudioSource` would have been the obvious choice and is
+  /// Android-only: just_audio's darwin decoder has no `silence` branch and
+  /// returns nil, so it would work on one platform and vanish on the other.
+  /// `ClippingAudioSource` over an asset is implemented on both, and because
+  /// the clip is a single entry it reports started and completed through the
+  /// same index handler as everything else - which is what gives silence real
+  /// completion evidence instead of a timer.
+  AudioSource _sourceFor(PlayableSegment segment) {
+    if (segment.kind == 'silence') {
+      return ClippingAudioSource(
+        child: AudioSource.asset(segment.uri),
+        start: Duration.zero,
+        end: Duration(milliseconds: segment.expectedMs),
+      );
+    }
+    return AudioSource.uri(Uri.parse(segment.uri));
   }
 
   void _onIndex(int? index) {

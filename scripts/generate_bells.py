@@ -37,6 +37,7 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 # never declared them in pubspec.yaml, so they could not reach a device.
 ASSET_ROOT = REPO_ROOT / "apps" / "mobile" / "assets" / "audio"
 BELL_DIR = ASSET_ROOT / "bells"
+SILENCE_DIR = ASSET_ROOT / "silence"
 MANIFEST = ASSET_ROOT / "PROVENANCE.json"
 
 
@@ -97,6 +98,29 @@ BELLS = (
 # change, which is heard as a click - the one artefact guaranteed to pull
 # somebody out of a meditation.
 FADE_MS = 15
+# The silence source a session's silence segments are clipped out of.
+#
+# Program004R's closeout needs silence to be *real media* so the native
+# pipeline schedules it and reports its completion, rather than a Dart timer
+# that cannot survive the screen locking. just_audio ships SilenceAudioSource,
+# but only Android implements it - the darwin decoder has no silence branch and
+# returns nil - so the cross-platform mechanism is a clip out of one bundled
+# asset instead.
+#
+# Length: the longest single silence segment any plan can produce is 323,692 ms
+# (open_awareness at ten minutes), measured by enumerating every practice at
+# every offered duration. Silence can only shrink from its planned target,
+# because the timing policy extends the *session* rather than a silence, so that
+# is a true upper bound. 330 s leaves a little headroom; a plan that ever
+# exceeds it fails prepare rather than shortening someone's meditation.
+#
+# Format: 8 kHz mono is the lowest rate both ExoPlayer and AVFoundation decode
+# without special handling, and the samples are all zero, so rate and depth
+# affect only file size. 16-bit matches the bells rather than introducing a
+# second PCM depth into the bundle.
+SILENCE_SECONDS = 330
+SILENCE_SAMPLE_RATE = 8_000
+
 PEAK = 0.72
 """Headroom below full scale, so a bell never clips on a device that applies
 its own gain."""
@@ -128,11 +152,16 @@ def synthesize(bell: Bell) -> bytes:
     return bytes(frames)
 
 
-def write_wav(path: Path, frames: bytes) -> None:
+def synthesize_silence() -> bytes:
+    """Digital silence: every sample zero. Deterministic by construction."""
+    return bytes(SILENCE_SECONDS * SILENCE_SAMPLE_RATE * (BIT_DEPTH // 8))
+
+
+def write_wav(path: Path, frames: bytes, sample_rate: int = SAMPLE_RATE) -> None:
     with wave.open(str(path), "wb") as handle:
         handle.setnchannels(CHANNELS)
         handle.setsampwidth(BIT_DEPTH // 8)
-        handle.setframerate(SAMPLE_RATE)
+        handle.setframerate(sample_rate)
         handle.writeframes(frames)
 
 
@@ -174,6 +203,46 @@ def build(check_only: bool = False) -> int:
             }
         )
 
+    # One silence asset, generated the same way and held to the same provenance
+    # rules as the bells.
+    SILENCE_DIR.mkdir(parents=True, exist_ok=True)
+    silence_frames = synthesize_silence()
+    silence_path = SILENCE_DIR / "silence.wav"
+    if check_only or silence_path.exists():
+        expected = hashlib.sha256(silence_frames).hexdigest()
+        if not silence_path.exists():
+            stale.append("silence.wav: missing")
+        else:
+            with wave.open(str(silence_path), "rb") as handle:
+                actual = handle.readframes(handle.getnframes())
+            if hashlib.sha256(actual).hexdigest() != expected:
+                stale.append("silence.wav: content differs from the generator")
+    if not check_only:
+        write_wav(silence_path, silence_frames, sample_rate=SILENCE_SAMPLE_RATE)
+
+    entries.append(
+        {
+            "file": "apps/mobile/assets/audio/silence/silence.wav",
+            "flutter_asset": "assets/audio/silence/silence.wav",
+            "asset_key": "silence.source",
+            "purpose": (
+                "The source every silence segment is clipped out of, so silence "
+                "is scheduled by the native audio pipeline and reports its own "
+                "completion instead of being waited out by a timer."
+            ),
+            "origin": "generated",
+            "generator": "scripts/generate_bells.py",
+            "license": "Project-owned. Zero samples, written by the generator.",
+            "third_party_content": False,
+            "sample_rate_hz": SILENCE_SAMPLE_RATE,
+            "channels": CHANNELS,
+            "bit_depth": BIT_DEPTH,
+            "duration_ms": SILENCE_SECONDS * 1000,
+            "raw_bytes": len(silence_frames),
+            "sha256": hashlib.sha256(silence_frames).hexdigest(),
+        }
+    )
+
     manifest = {
         "note": (
             "Every audio asset shipped with this app is listed here with its "
@@ -195,11 +264,11 @@ def build(check_only: bool = False) -> int:
         if json.loads(MANIFEST.read_text()) != manifest:
             print("stale: PROVENANCE.json does not match the generator")
             return 1
-        print("bell assets and provenance are current")
+        print(f"audio assets and provenance are current ({len(entries)} assets)")
         return 0
 
     MANIFEST.write_text(json.dumps(manifest, indent=2) + "\n")
-    print(f"wrote {len(entries)} bells and {MANIFEST.relative_to(REPO_ROOT)}")
+    print(f"wrote {len(entries)} assets and {MANIFEST.relative_to(REPO_ROOT)}")
     return 0
 
 

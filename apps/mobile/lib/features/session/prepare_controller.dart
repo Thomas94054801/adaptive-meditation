@@ -118,6 +118,7 @@ class PrepareController {
     required SessionPlanV2 plan,
     required Map<String, BundledAsset> bellAssets,
     AudioMode mode = AudioMode.audible,
+    SilenceSource silence = bundledSilence,
   }) async {
     _cancelled = false;
     final List<TimelineSegment> required = plan.segments
@@ -175,6 +176,15 @@ class PrepareController {
     );
     final TtsEngineDescriptor descriptor = await _tts.describe();
 
+    // Silence lengths come from the plan until measured speech is in, and the
+    // resolution recomputes them afterwards. The bound check below uses the
+    // planned value, which is the upper bound: absorption only ever shortens a
+    // silence, so a plan that fits cannot stop fitting.
+    final Map<String, int> resolvedSilenceMs = <String, int>{
+      for (final TimelineSegment s in plan.segments)
+        if (s.isSilence) s.id: s.nominalMs,
+    };
+
     final Map<String, int> measured = <String, int>{};
     final Map<String, String> hashes = <String, String>{};
     final Map<String, String> containers = <String, String>{};
@@ -184,9 +194,22 @@ class PrepareController {
       _throwIfCancelled();
 
       if (segment.isSilence) {
-        // Silence needs no medium here; the runtime schedules it as real
-        // media, which Slice C owns. It still counts toward progress so the
-        // user sees honest completion rather than a bar that jumps.
+        // Silence needs no synthesis, but it does need verifying: the clip
+        // cannot be longer than the source it comes out of.
+        final int requiredMs =
+            resolvedSilenceMs[segment.id] ?? segment.nominalMs;
+        if (requiredMs > silence.durationMs) {
+          _fail(
+            PrepareFailure.verificationFailed,
+            '${segment.id}: needs ${requiredMs}ms of silence but the bundled '
+            'source is only ${silence.durationMs}ms',
+          );
+          throw PrepareRejected(
+            PrepareFailure.verificationFailed,
+            '${segment.id}: needs ${requiredMs}ms of silence but the bundled '
+            'source is only ${silence.durationMs}ms',
+          );
+        }
         done++;
         _emit(
           PrepareProgress(
@@ -325,6 +348,11 @@ class PrepareController {
       source: MeasurementSource.deviceReported,
     );
 
+    final Map<String, int> effectiveBySegment = <String, int>{
+      for (final ResolvedSegment s in resolution.segments)
+        s.segmentId: s.effectiveMs,
+    };
+
     final List<PlayableSegment> playable = <PlayableSegment>[];
     for (final TimelineSegment segment in plan.segments) {
       final String? hash = hashes[segment.id];
@@ -346,8 +374,29 @@ class PrepareController {
             kind: 'speech',
           ),
         );
+      } else if (segment.isSilence) {
+        // The line this closeout exists for. Silence used to be left out of
+        // the playable list entirely, so it never received a player callback,
+        // never gained coverage, and audible completion was unreachable.
+        //
+        // The clip length comes from the *resolution*, not the plan: the
+        // timing policy may have absorbed a speech overrun by shortening this
+        // silence, and the session plays the resolved timeline. Clipping to
+        // the planned length would make the audio disagree with the record the
+        // backend validates.
+        final int requiredMs =
+            effectiveBySegment[segment.id] ?? segment.nominalMs;
+        if (requiredMs > 0) {
+          playable.add(
+            PlayableSegment(
+              segmentId: segment.id,
+              uri: silence.assetPath,
+              expectedMs: requiredMs,
+              kind: 'silence',
+            ),
+          );
+        }
       }
-      // Silence is added by the runtime, which owns silence media.
     }
 
     _emit(
@@ -474,6 +523,30 @@ class PrepareController {
     await _progress.close();
   }
 }
+
+/// The bundled source every silence segment is clipped out of.
+///
+/// Its duration is the hard upper bound on a single silence segment. A plan
+/// that asks for more fails prepare rather than being quietly truncated: a
+/// shortened silence is a different meditation, not a shorter one.
+class SilenceSource {
+  const SilenceSource({
+    required this.assetPath,
+    required this.durationMs,
+    required this.sha256,
+  });
+
+  final String assetPath;
+  final int durationMs;
+  final String sha256;
+}
+
+/// The asset this build ships, matching apps/mobile/assets/audio/PROVENANCE.json.
+const SilenceSource bundledSilence = SilenceSource(
+  assetPath: 'assets/audio/silence/silence.wav',
+  durationMs: 330000,
+  sha256: '9c25efe9fe096ea99cda9ec77233e6a9a77f5e57827043c81c8e10e87a800172',
+);
 
 /// A bell shipped inside the app bundle.
 class BundledAsset {
