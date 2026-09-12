@@ -29,6 +29,8 @@ from app.api.v1.schemas import (
     RecommendationResponse,
     RenderManifestEntryResponse,
     RenderManifestResponse,
+    ResolutionRequest,
+    ResolutionResponse,
     SessionCreateRequest,
     SessionEventBatchRequest,
     SessionEventBatchResponse,
@@ -55,6 +57,12 @@ from app.domain.timeline.planner_v2 import (
     PLAN_TIME_VOICE as DEFAULT_VOICE_ID,
 )
 from app.domain.timeline.planner_v2 import SessionPlanV2
+from app.domain.timeline.resolution import (
+    ResolutionInvalid,
+    ResolvedTimeline,
+    recompute_hash,
+    validate_against_plan,
+)
 from app.domain.timeline.service import (
     apply_command,
     plan_response_payload,
@@ -67,12 +75,19 @@ from app.persistence.repositories import (
     CheckInRepository,
     EventDraft,
     GuestRepository,
+    ResolutionRevisionConflict,
     SessionDefinitionRepository,
     SessionEventRepository,
     SessionRepository,
+    SessionResolutionRepository,
 )
 
 router = APIRouter(prefix="/v1", tags=["v1"])
+
+# Bumped when what counts as delivery evidence changes, so a historical
+# session's evidence can be read with the rules that were in force when it was
+# recorded rather than today's.
+DELIVERY_EVIDENCE_VERSION = "1"
 
 ERROR_RESPONSES: dict[int | str, dict[str, object]] = {
     401: {"model": ErrorResponse, "description": "Guest identity required"},
@@ -520,6 +535,94 @@ def apply_playback_command(
             )
 
     return _playback_state(row, applied=outcome.applied)
+
+
+@router.post(
+    "/sessions/{session_id}/resolution",
+    operation_id="recordSessionResolution",
+    response_model=ResolutionResponse,
+    status_code=status.HTTP_201_CREATED,
+    responses={k: ERROR_RESPONSES[k] for k in (401, 404, 409, 422)},
+    summary="Record the resolution a device computed",
+)
+def record_session_resolution(
+    session_id: uuid.UUID,
+    payload: ResolutionRequest,
+    db: DbSessionDep,
+    guest_id: RequiredGuestDep,
+) -> ResolutionResponse:
+    """Validate and store a device-computed resolution.
+
+    The server recomputes the hash from the content and validates the content
+    against the frozen plan - segment identity and order, silence floors,
+    versions, and whether an audible mode actually has audio hashes. Checking
+    that numbers are non-negative would not be validation; a tampered or buggy
+    client can produce a perfectly non-negative lie.
+    """
+    row = _owned_session(session_id, guest_id, db)
+    if not row.plan_v2:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={
+                "code": "no_typed_plan",
+                "message": "This session has no typed plan to resolve.",
+            },
+        )
+
+    try:
+        resolution = ResolvedTimeline.from_dict(payload.model_dump(mode="json"))
+    except (ResolutionInvalid, ValueError, KeyError) as error:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail={"code": "resolution_malformed", "message": str(error)},
+        ) from None
+
+    # Recomputed, not trusted. A resolution whose stated hash does not match
+    # its own content is rejected outright.
+    recomputed = recompute_hash(resolution)
+    if recomputed != payload.resolution_hash:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail={
+                "code": "resolution_hash_mismatch",
+                "message": "the resolution hash does not match its content",
+            },
+        )
+
+    plan = SessionPlanV2.from_dict(dict(row.plan_v2))
+    try:
+        validate_against_plan(resolution, plan)
+    except ResolutionInvalid as error:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail={"code": "resolution_rejected", "message": str(error)},
+        ) from None
+
+    resolutions = SessionResolutionRepository(db)
+    try:
+        stored, created = resolutions.record(
+            session_id=row.id, resolution=resolution, server_validated=True
+        )
+    except ResolutionRevisionConflict as error:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={"code": "resolution_revision_conflict", "message": str(error)},
+        ) from None
+
+    # The session points at the newest resolution, so a reader does not have to
+    # know how revisions work to find the current one.
+    if created and (row.resolution_hash is None or stored.revision >= 1):
+        row.resolution_hash = stored.resolution_hash
+        row.audio_mode = stored.audio_mode
+        row.delivery_evidence_version = DELIVERY_EVIDENCE_VERSION
+
+    return ResolutionResponse(
+        session_id=row.id,
+        revision=stored.revision,
+        resolution_hash=stored.resolution_hash,
+        server_validated=stored.server_validated,
+        created=created,
+    )
 
 
 @router.post(

@@ -23,6 +23,7 @@ from app.domain.recommendation.scoring import RuleOutcome
 from app.domain.session.planner import SessionPlan
 from app.domain.state.models import CheckIn as CheckInModel
 from app.domain.timeline.definition import SessionDefinition
+from app.domain.timeline.resolution import ResolvedTimeline
 from app.persistence import models
 
 
@@ -369,6 +370,81 @@ class SessionDefinitionRepository:
         if row is None:
             return None
         return SessionDefinition.from_dict(dict(row.content))
+
+
+class SessionResolutionRepository:
+    """Resolutions, one row per revision.
+
+    Append-only by revision: a repaired resolution is a new row, so the prefix
+    a user already heard stays explainable. There is deliberately no update.
+    """
+
+    def __init__(self, session: OrmSession) -> None:
+        self._session = session
+
+    def latest(self, session_id: uuid.UUID) -> models.SessionResolution | None:
+        stmt = (
+            select(models.SessionResolution)
+            .where(models.SessionResolution.session_id == session_id)
+            .order_by(models.SessionResolution.revision.desc())
+            .limit(1)
+        )
+        return self._session.execute(stmt).scalar_one_or_none()
+
+    def get_revision(self, session_id: uuid.UUID, revision: int) -> models.SessionResolution | None:
+        stmt = select(models.SessionResolution).where(
+            models.SessionResolution.session_id == session_id,
+            models.SessionResolution.revision == revision,
+        )
+        return self._session.execute(stmt).scalar_one_or_none()
+
+    def record(
+        self,
+        *,
+        session_id: uuid.UUID,
+        resolution: ResolvedTimeline,
+        server_validated: bool,
+    ) -> tuple[models.SessionResolution, bool]:
+        """Store a resolution. Returns (row, created).
+
+        Idempotent on (session, revision): a client retrying after a dropped
+        response finds the existing row. A retry carrying *different* content
+        for the same revision is a conflict, not a duplicate, and the caller
+        raises rather than silently keeping either version.
+        """
+        existing = self.get_revision(session_id, resolution.revision)
+        if existing is not None:
+            if existing.resolution_hash != resolution.resolution_hash:
+                raise ResolutionRevisionConflict(
+                    f"revision {resolution.revision} already exists with different content"
+                )
+            return existing, False
+
+        row = models.SessionResolution(
+            id=uuid.uuid4(),
+            session_id=session_id,
+            revision=resolution.revision,
+            resolution_hash=resolution.resolution_hash,
+            plan_hash=resolution.plan_hash,
+            canonicalization_version=resolution.canonicalization_version,
+            timing_policy_version=resolution.timing_policy_version,
+            measurement_source=resolution.measurement_source.value,
+            audio_mode=resolution.audio_mode,
+            total_ms=resolution.total_ms,
+            extended_by_ms=resolution.extended_by_ms,
+            absorbed_ms=resolution.absorbed_ms,
+            outcome=resolution.outcome,
+            content=resolution.as_dict(),
+            server_validated=server_validated,
+            created_at=utcnow(),
+        )
+        self._session.add(row)
+        self._session.flush()
+        return row, True
+
+
+class ResolutionRevisionConflict(Exception):
+    """The same revision arrived twice with different content."""
 
 
 class AudioRenderRepository:

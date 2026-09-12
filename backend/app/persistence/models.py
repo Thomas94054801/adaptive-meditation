@@ -130,6 +130,16 @@ class Session(Base):
         sa.ForeignKey("session_definitions.id", ondelete="RESTRICT"), nullable=True
     )
     run_state: Mapped[str | None] = mapped_column(sa.String(16), nullable=True)
+    # Program004R. Nullable throughout: a session created before resolutions
+    # existed replays from its plan, which is what keeps history readable.
+    resolution_hash: Mapped[str | None] = mapped_column(sa.String(64), nullable=True)
+    audio_mode: Mapped[str | None] = mapped_column(sa.String(32), nullable=True)
+    # Why a run is paused. The accepted SDD modelled `interrupted` as its own
+    # state; the only transition that distinguished it was auto-resume on focus
+    # regain, which this product refuses. A reason is additive where a new
+    # state would change a frozen check constraint and every historical replay.
+    pause_reason: Mapped[str | None] = mapped_column(sa.String(32), nullable=True)
+    delivery_evidence_version: Mapped[str | None] = mapped_column(sa.String(16), nullable=True)
     last_segment_id: Mapped[str | None] = mapped_column(sa.String(64), nullable=True)
     elapsed_ms: Mapped[int] = mapped_column(
         sa.Integer, nullable=False, default=0, server_default="0"
@@ -309,6 +319,65 @@ class SessionEvent(Base):
     command_id: Mapped[str | None] = mapped_column(sa.String(64), nullable=True, index=True)
     detail: Mapped[dict[str, object] | None] = mapped_column(JSONType, nullable=True)
     occurred_at: Mapped[datetime] = mapped_column(
+        sa.DateTime(timezone=True), nullable=False, server_default=sa.func.current_timestamp()
+    )
+
+
+class SessionResolution(Base):
+    """What a device actually resolved a session to — SDD A2.
+
+    Separate from the plan on purpose. The plan is the frozen intent and its
+    hash never changes; a resolution records the durations the device measured
+    and the output hashes it produced, so it is a different fact with a
+    different lifetime.
+
+    Write-once per revision. A rebuilt resolution is a new row with
+    ``revision + 1``, never an edit, so the already-played prefix of a session
+    stays explainable after a repair. ``server_validated`` records whether the
+    backend independently recomputed the hash and agreed - the client reaching
+    ``ready`` does not require it, so the two states are stored separately
+    rather than collapsed into one boolean.
+    """
+
+    __tablename__ = "session_resolutions"
+    __table_args__ = (
+        sa.UniqueConstraint("session_id", "revision", name="uq_session_resolutions_revision"),
+        sa.CheckConstraint("revision >= 1", name="ck_session_resolutions_revision"),
+        sa.CheckConstraint("total_ms >= 0", name="ck_session_resolutions_total"),
+        sa.CheckConstraint("extended_by_ms >= 0", name="ck_session_resolutions_extended"),
+        sa.CheckConstraint("absorbed_ms >= 0", name="ck_session_resolutions_absorbed"),
+        sa.CheckConstraint(
+            "audio_mode IN ('audible', 'silent_by_choice', 'silent_degraded')",
+            name="ck_session_resolutions_mode",
+        ),
+        sa.CheckConstraint(
+            "measurement_source IN ('device_reported', 'plan_estimate')",
+            name="ck_session_resolutions_source",
+        ),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(sa.Uuid, primary_key=True, default=uuid.uuid4)
+    session_id: Mapped[uuid.UUID] = mapped_column(
+        sa.ForeignKey("sessions.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    revision: Mapped[int] = mapped_column(sa.Integer, nullable=False, default=1)
+    resolution_hash: Mapped[str] = mapped_column(sa.String(64), nullable=False, index=True)
+    plan_hash: Mapped[str] = mapped_column(sa.String(64), nullable=False)
+    canonicalization_version: Mapped[str] = mapped_column(sa.String(16), nullable=False)
+    timing_policy_version: Mapped[str] = mapped_column(sa.String(16), nullable=False)
+    measurement_source: Mapped[str] = mapped_column(sa.String(32), nullable=False)
+    audio_mode: Mapped[str] = mapped_column(sa.String(32), nullable=False)
+    total_ms: Mapped[int] = mapped_column(sa.Integer, nullable=False)
+    extended_by_ms: Mapped[int] = mapped_column(sa.Integer, nullable=False, default=0)
+    absorbed_ms: Mapped[int] = mapped_column(sa.Integer, nullable=False, default=0)
+    outcome: Mapped[str] = mapped_column(sa.String(32), nullable=False)
+    # The full resolution, so a historical session stays replayable without
+    # depending on the planner still producing the same estimates.
+    content: Mapped[dict[str, object]] = mapped_column(JSONType, nullable=False)
+    server_validated: Mapped[bool] = mapped_column(
+        sa.Boolean, nullable=False, default=False, server_default=sa.false()
+    )
+    created_at: Mapped[datetime] = mapped_column(
         sa.DateTime(timezone=True), nullable=False, server_default=sa.func.current_timestamp()
     )
 

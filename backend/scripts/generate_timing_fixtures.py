@@ -1,0 +1,192 @@
+#!/usr/bin/env python3
+"""Generate the cross-language timing and hash fixtures.
+
+Both the Python resolution module and the Dart one are tested against this
+file. Requiring Dart to execute Python was never the plan; requiring the two to
+agree on specific bytes is. A change to the canonicalisation or the timing
+arithmetic means a new version and a regenerated fixture set, and whichever
+side moves without the other fails a test.
+"""
+
+from __future__ import annotations
+
+import json
+import sys
+from pathlib import Path
+
+BACKEND = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(BACKEND))
+
+from app.domain.timeline.resolution import (  # noqa: E402
+    CANONICALIZATION_VERSION,
+    TIMING_POLICY_VERSION,
+    MeasurementSource,
+    ResolvedSegment,
+    ResolvedTimeline,
+)
+
+FIXTURES = BACKEND.parent / "contracts" / "timing_fixtures.v1.json"
+
+
+def case(
+    name: str,
+    note: str,
+    *,
+    plan_hash: str,
+    locale: str,
+    segments: list[ResolvedSegment],
+    extended_by_ms: int = 0,
+    absorbed_ms: int = 0,
+    outcome: str = "on_target",
+    audio_mode: str = "audible",
+    revision: int = 1,
+    source: MeasurementSource = MeasurementSource.DEVICE_REPORTED,
+) -> dict[str, object]:
+    resolution = ResolvedTimeline(
+        plan_hash=plan_hash,
+        locale=locale,
+        revision=revision,
+        timing_policy_version=TIMING_POLICY_VERSION,
+        canonicalization_version=CANONICALIZATION_VERSION,
+        measurement_source=source,
+        audio_mode=audio_mode,
+        segments=tuple(segments),
+        extended_by_ms=extended_by_ms,
+        absorbed_ms=absorbed_ms,
+        outcome=outcome,
+    )
+    return {
+        "name": name,
+        "note": note,
+        "input": resolution.as_dict(),
+        "expected_canonical_sha256": resolution.resolution_hash,
+        # Kept so a mismatch says *where* the two disagree rather than only
+        # that they do. Control characters are escaped by JSON encoding.
+        "expected_canonical": resolution.canonical(),
+    }
+
+
+def build() -> dict[str, object]:
+    a = "a" * 64
+    speech_hash = "1" * 64
+    bell_hash = "2" * 64
+
+    cases = [
+        case(
+            "minimal",
+            "One bell. The smallest thing that hashes.",
+            plan_hash=a,
+            locale="en-US",
+            segments=[
+                ResolvedSegment("bell_open", "bell", 2000, bell_hash),
+            ],
+        ),
+        case(
+            "typical_session",
+            "Bell, speech, silence, marker, closing bell: every kind at once.",
+            plan_hash=a,
+            locale="en-US",
+            segments=[
+                ResolvedSegment("bell_open", "bell", 2000, bell_hash),
+                ResolvedSegment("speech_0_arrive", "speech", 8200, speech_hash),
+                ResolvedSegment("silence_0_arrive", "silence", 51800),
+                ResolvedSegment("marker_0_arrive", "marker", 0),
+                ResolvedSegment("bell_close", "bell", 2000, bell_hash),
+            ],
+            absorbed_ms=200,
+            outcome="absorbed",
+        ),
+        case(
+            "extended",
+            "Overrun past the slack: the session is longer and says so.",
+            plan_hash=a,
+            locale="en-US",
+            segments=[
+                ResolvedSegment("speech_0", "speech", 15000, speech_hash),
+                ResolvedSegment("silence_0", "silence", 4000),
+            ],
+            absorbed_ms=6000,
+            extended_by_ms=4000,
+            outcome="duration_extended",
+        ),
+        case(
+            "silent_mode",
+            "No audio hashes at all, and the mode says why.",
+            plan_hash=a,
+            locale="en-US",
+            segments=[
+                ResolvedSegment("speech_0", "speech", 8000),
+                ResolvedSegment("silence_0", "silence", 52000),
+            ],
+            audio_mode="silent_by_choice",
+            source=MeasurementSource.PLAN_ESTIMATE,
+        ),
+        case(
+            "non_ascii_locale",
+            "NFC normalisation: the decomposed form must hash the same. This is "
+            "the case that would have silently halved the cache hit rate.",
+            plan_hash=a,
+            # Composed e-acute. A Dart implementation that skips NFC produces a
+            # different hash for the decomposed spelling of the same locale tag
+            # and segment id.
+            locale="fr-FR",
+            segments=[
+                ResolvedSegment("speech_relâche", "speech", 7000, speech_hash),
+            ],
+        ),
+        case(
+            "later_revision",
+            "A rebuilt resolution is a new revision, not an edit.",
+            plan_hash=a,
+            locale="en-US",
+            revision=3,
+            segments=[
+                ResolvedSegment("speech_0", "speech", 9000, speech_hash),
+            ],
+        ),
+    ]
+
+    return {
+        "note": (
+            "Cross-language contract for Program004R resolution hashing. "
+            "Generated by backend/scripts/generate_timing_fixtures.py. Both the "
+            "Python and the Dart implementation must reproduce every "
+            "expected_canonical_sha256 exactly."
+        ),
+        "canonicalization_version": CANONICALIZATION_VERSION,
+        "timing_policy_version": TIMING_POLICY_VERSION,
+        "separators": {"unit": "U+001F", "record": "U+001E"},
+        "rules": [
+            "UTF-8 encoding",
+            "NFC normalisation of every text field",
+            "fixed field order, never alphabetical",
+            "null fields omitted, never serialised",
+            "integer milliseconds only; no floats anywhere",
+        ],
+        "cases": cases,
+    }
+
+
+def main() -> int:
+    check = "--check" in sys.argv
+    document = build()
+    rendered = json.dumps(document, indent=2, ensure_ascii=False) + "\n"
+
+    if check:
+        if not FIXTURES.exists():
+            print("stale: contracts/timing_fixtures.v1.json is missing")
+            return 1
+        if FIXTURES.read_text(encoding="utf-8") != rendered:
+            print("stale: contracts/timing_fixtures.v1.json does not match the generator")
+            return 1
+        print(f"timing fixtures current: {len(document['cases'])} cases")  # type: ignore[arg-type]
+        return 0
+
+    FIXTURES.parent.mkdir(parents=True, exist_ok=True)
+    FIXTURES.write_text(rendered, encoding="utf-8")
+    print(f"wrote {FIXTURES.relative_to(BACKEND.parent)} with {len(document['cases'])} cases")  # type: ignore[arg-type]
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

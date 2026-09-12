@@ -618,6 +618,155 @@ components:
       - complete
       title: RenderManifestResponse
       type: object
+    ResolutionRequest:
+      additionalProperties: false
+      description: 'A resolution the device computed and is already playing from.
+
+
+        Posted for the record, not for permission: the client reached `ready` on
+
+        its own verification, and a server ACK is never a gate on offline start.'
+      properties:
+        absorbed_ms:
+          minimum: 0.0
+          title: Absorbed Ms
+          type: integer
+        audio_mode:
+          enum:
+          - audible
+          - silent_by_choice
+          - silent_degraded
+          title: Audio Mode
+          type: string
+        canonicalization_version:
+          maxLength: 16
+          title: Canonicalization Version
+          type: string
+        extended_by_ms:
+          minimum: 0.0
+          title: Extended By Ms
+          type: integer
+        locale:
+          maxLength: 16
+          title: Locale
+          type: string
+        measurement_source:
+          enum:
+          - device_reported
+          - plan_estimate
+          title: Measurement Source
+          type: string
+        outcome:
+          maxLength: 32
+          title: Outcome
+          type: string
+        plan_hash:
+          maxLength: 64
+          minLength: 64
+          title: Plan Hash
+          type: string
+        resolution_hash:
+          maxLength: 64
+          minLength: 64
+          title: Resolution Hash
+          type: string
+        revision:
+          maximum: 1000.0
+          minimum: 1.0
+          title: Revision
+          type: integer
+        segments:
+          items:
+            $ref: '#/components/schemas/ResolvedSegmentRequest'
+          maxItems: 400
+          minItems: 1
+          title: Segments
+          type: array
+        timing_policy_version:
+          maxLength: 16
+          title: Timing Policy Version
+          type: string
+        total_ms:
+          minimum: 0.0
+          title: Total Ms
+          type: integer
+      required:
+      - canonicalization_version
+      - plan_hash
+      - locale
+      - revision
+      - timing_policy_version
+      - measurement_source
+      - audio_mode
+      - segments
+      - total_ms
+      - extended_by_ms
+      - absorbed_ms
+      - outcome
+      - resolution_hash
+      title: ResolutionRequest
+      type: object
+    ResolutionResponse:
+      additionalProperties: false
+      properties:
+        created:
+          title: Created
+          type: boolean
+        resolution_hash:
+          title: Resolution Hash
+          type: string
+        revision:
+          title: Revision
+          type: integer
+        server_validated:
+          title: Server Validated
+          type: boolean
+        session_id:
+          format: uuid
+          title: Session Id
+          type: string
+      required:
+      - session_id
+      - revision
+      - resolution_hash
+      - server_validated
+      - created
+      title: ResolutionResponse
+      type: object
+    ResolvedSegmentRequest:
+      additionalProperties: false
+      properties:
+        audio_sha256:
+          anyOf:
+          - maxLength: 64
+            minLength: 64
+            type: string
+          - type: 'null'
+          title: Audio Sha256
+        effective_ms:
+          maximum: 1800000.0
+          minimum: 0.0
+          title: Effective Ms
+          type: integer
+        kind:
+          enum:
+          - speech
+          - silence
+          - bell
+          - marker
+          title: Kind
+          type: string
+        segment_id:
+          maxLength: 64
+          minLength: 1
+          title: Segment Id
+          type: string
+      required:
+      - segment_id
+      - kind
+      - effective_ms
+      title: ResolvedSegmentRequest
+      type: object
     SessionCreateRequest:
       additionalProperties: false
       description: '``recommendation`` is optional and, when supplied, is verified.
@@ -1942,6 +2091,77 @@ paths:
                 $ref: '#/components/schemas/HTTPValidationError'
           description: Validation Error
       summary: Resolve the audio a session needs
+      tags:
+      - v1
+  /v1/sessions/{session_id}/resolution:
+    post:
+      description: 'Validate and store a device-computed resolution.
+
+
+        The server recomputes the hash from the content and validates the content
+
+        against the frozen plan - segment identity and order, silence floors,
+
+        versions, and whether an audible mode actually has audio hashes. Checking
+
+        that numbers are non-negative would not be validation; a tampered or buggy
+
+        client can produce a perfectly non-negative lie.'
+      operationId: recordSessionResolution
+      parameters:
+      - in: path
+        name: session_id
+        required: true
+        schema:
+          format: uuid
+          title: Session Id
+          type: string
+      - in: header
+        name: X-Guest-Id
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-Guest-Id
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ResolutionRequest'
+        required: true
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ResolutionResponse'
+          description: Successful Response
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Guest identity required
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Resource not found
+        '409':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Conflicting state
+        '422':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+          description: Validation error
+      summary: Record the resolution a device computed
       tags:
       - v1
   /v1/sessions/{session_id}/start:
