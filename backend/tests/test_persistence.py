@@ -26,6 +26,21 @@ from app.settings import Settings
 
 from .conftest import running_on_postgres
 
+
+def engine_for(database_url: str, schema: str | None) -> sa.Engine:
+    """An engine pinned to the run's schema.
+
+    A bare create_engine would resolve to ``public`` and see an empty database,
+    because this run's tables live in its own schema.
+    """
+    connect_args = (
+        {"options": f"-csearch_path={schema}"}
+        if schema and database_url.startswith("postgresql")
+        else {}
+    )
+    return sa.create_engine(database_url, connect_args=connect_args)
+
+
 CHECK_IN = CheckIn.model_validate(
     {
         "goal": "sleep",
@@ -45,22 +60,26 @@ def database(settings: Settings) -> Database:
 
 
 def test_migration_leaves_no_pending_schema_difference(
-    alembic_config: Config, migrated_database: str
+    alembic_config: Config, migrated_database: str, test_schema: str | None
 ) -> None:
     """A model changed without a migration fails here rather than in production."""
-    engine = sa.create_engine(migrated_database)
+    engine = engine_for(migrated_database, test_schema)
     with engine.connect() as connection:
+        # The connection's search_path already resolves to the run's schema, so
+        # alembic_version reflects as unqualified and needs no schema opt.
         context = MigrationContext.configure(connection, opts={"compare_type": True})
         diff = compare_metadata(context, models.Base.metadata)
     engine.dispose()
     assert diff == [], f"models and migrations disagree: {diff}"
 
 
-def test_migration_is_reversible(alembic_config: Config, migrated_database: str) -> None:
+def test_migration_is_reversible(
+    alembic_config: Config, migrated_database: str, test_schema: str | None
+) -> None:
     command.downgrade(alembic_config, "base")
-    engine = sa.create_engine(migrated_database)
+    engine = engine_for(migrated_database, test_schema)
     inspector = sa.inspect(engine)
-    assert "check_ins" not in inspector.get_table_names()
+    assert "check_ins" not in inspector.get_table_names(schema=test_schema)
     engine.dispose()
     command.upgrade(alembic_config, "head")
 
@@ -175,16 +194,18 @@ def test_out_of_range_value_is_refused_by_the_database(
         )
 
 
-def test_production_dialect_uses_jsonb(migrated_database: str) -> None:
+def test_production_dialect_uses_jsonb(migrated_database: str, test_schema: str | None) -> None:
     if not running_on_postgres(migrated_database):
         pytest.skip("PostgreSQL-only assertion; set TEST_DATABASE_URL to run it")
-    engine = sa.create_engine(migrated_database)
+    engine = engine_for(migrated_database, test_schema)
     with engine.connect() as connection:
         rows = connection.execute(
             sa.text(
                 "select column_name, data_type from information_schema.columns "
-                "where table_name = 'sessions' and column_name in ('recommendation', 'plan')"
-            )
+                "where table_name = 'sessions' and table_schema = :schema "
+                "and column_name in ('recommendation', 'plan')"
+            ),
+            {"schema": test_schema or "public"},
         ).all()
     engine.dispose()
     assert {row[1] for row in rows} == {"jsonb"}

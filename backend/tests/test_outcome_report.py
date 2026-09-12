@@ -242,9 +242,10 @@ def test_the_report_is_read_only(seeded: Database, client: TestClient) -> None:
 def test_the_script_runs_and_emits_json(seeded: Database, settings: Settings) -> None:
     """Runs the script as a script, with the database passed explicitly.
 
-    The script reads DATABASE_URL from the environment. Relying on the ambient
-    value made this pass locally and fail in CI, where only TEST_DATABASE_URL is
-    set - so the test now supplies it rather than inheriting one.
+    Both DATABASE_URL *and* DATABASE_SCHEMA are supplied. The URL alone was not
+    enough once the suite moved to per-run schemas: the subprocess connected on
+    the default search_path and found an empty database, because this run's
+    tables live in a schema only this run knows the name of.
     """
     import os
 
@@ -255,7 +256,11 @@ def test_the_script_runs_and_emits_json(seeded: Database, settings: Settings) ->
         text=True,
         cwd=BACKEND_ROOT,
         timeout=120,
-        env={**os.environ, "DATABASE_URL": settings.database_url},
+        env={
+            **os.environ,
+            "DATABASE_URL": settings.database_url,
+            "DATABASE_SCHEMA": settings.database_schema,
+        },
     )
     assert completed.returncode == 0, completed.stderr
 
