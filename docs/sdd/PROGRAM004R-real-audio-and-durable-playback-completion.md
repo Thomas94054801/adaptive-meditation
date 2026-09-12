@@ -1,8 +1,12 @@
 # PROGRAM004R — Real Audio and Durable Playback Completion
 
 **Task ID:** `PROGRAM004R_SDD_REAL_AUDIO_AND_DURABLE_PLAYBACK_COMPLETION`
-**Type:** SDD only. No implementation, tests, migrations, dependencies,
-manifests or existing documents are modified by this round.
+**Type:** design contract. Authored SDD-only; amended under review; the
+amendment commit is followed in the same task by the Slice A–F implementation
+it specifies.
+**Status:** reviewed at `dc93e848304e8e15156a64e56d8cebb7e1b8b132` and
+**accepted with binding amendments**, applied in §6.1, §9.1, §11.4, §13 and
+§13A. Where earlier text disagrees with §13A, §13A governs.
 **Completes:** `docs/sdd/PROGRAM004-core-adaptive-meditation-experience.md`
 (accepted at `44c4419365b9701ad2a9813159ca4a85dae18bc3`).
 **Does not replace:** Program005 Personalization.
@@ -480,16 +484,32 @@ practice; any paid TTS account as a dependency of this completion.
 
 ### 6.1 What `ready` is allowed to mean
 
-**DESIGN_DECISION.** `preparing → ready` requires, for the selected audio mode,
-that **every required segment** has:
+**AMENDED A1 — the normative definition.** Exactly one readiness model:
 
-1. a local file that exists, whose bytes hash to the recorded `audio_sha256`;
-2. a successful decode probe returning a duration within tolerance of the
-   recorded duration; and
-3. an output adapter that loaded without error.
+```text
+AUDIO_READY =
+      canonical plan and content available locally
+  AND every required speech / bell / silence medium locally resolvable
+  AND hashes, container format, measured duration and decode probe all pass
+  AND resolved timeline persisted locally
+  AND every required asset reference pinned
+  AND the production playback adapter initialised without error
+```
 
-Focus and route are **not** checked at `ready` — they are checked at `start`,
-because they are conditions of the moment, not of preparation.
+Every one of those clauses is necessary. `preparing → ready` happens once, for
+the whole required set, and not before.
+
+Focus and route are **not** part of readiness — they are checked at `start`,
+because they are conditions of the moment rather than properties of preparation.
+
+**Full verification does not mean everything stays resident.** Each file is
+decode-probed and then released; playback uses a bounded buffer. A 20-minute
+session is never decoded into RAM as PCM. §11.4's memory budget governs this.
+
+**Warm-up is allowed; synthesis after `start` is not.** The recommendation
+screen may pre-warm the *current candidate* early and cancellably, showing
+progress. Once `ready` is reached, no required segment may still be
+synthesising. Pre-warming must not sweep every practice and voice.
 
 **DESIGN_DECISION — explicitly insufficient for `ready`:** that the prepare API
 was called; that a manifest was received; that an exception was caught; that a
@@ -740,10 +760,30 @@ already ubiquitous. A file of JSON lines would need its own atomicity and
 migration story; `SharedPreferences` is not transactional and not sized for
 this. **An in-memory list must never be the only store** — G5 today.
 
-Schema versioned independently of the server's. Capacity bounded: at most
-N sessions' worth of checkpoints retained, oldest pruned; the outbox is bounded
-by a row cap with oldest-observational-event-first pruning, never dropping
-un-ACKed **commands**.
+Schema versioned independently of the server's.
+
+**AMENDED A5 — fixed, measurable quotas.** These are design decisions for this
+package, not measurements:
+
+| Setting | Initial value |
+|---------|---------------|
+| Concurrent active / resumable runs | 1; an existing run is resolved before a new one starts |
+| Synced terminal checkpoints retained | ≤ 100 rows **and** ≤ 30 days (this is local pruning, not deletion of server history) |
+| Outbox soft limit | 10,000 rows **or** 20 MiB |
+| Outbox hard admission limit | 50,000 rows **or** 50 MiB |
+| Critical-write reserve | ≥ 1,000 rows **and** ≥ 2 MiB, held for active-run operations, completion and feedback |
+| Product audio cache | 150,000,000 bytes soft cap (the inherited 150 MB contract) |
+
+At the soft limit only **reconstructible, non-essential telemetry** is
+compacted. Un-ACKed commands, required segment evidence, resolutions,
+completions and feedback are never dropped. At the hard admission limit the app
+stops starting new runs it could not recover, and syncs or prunes already-ACKed
+data first.
+
+Pause and stop always take effect immediately. A failed persist is **reported as
+reduced recoverability**, never hidden, and **never** worked around by falling
+back to an in-memory list — that would be claiming durability the app does not
+have.
 
 ### 9.2 What is persisted
 
@@ -936,19 +976,23 @@ them:
 
 | Quantity | Threshold (p95) | n | Environment |
 |----------|-----------------|---|-------------|
-| Warm prepare, all files cached + verified | < 800 ms | 30 | mid-tier device, 10-min session |
-| Cold prepare, full session, background | < 25 s | 30 | mid-tier device, 20-min session |
-| Ready → first audible sound, warm | < 800 ms | 30 | device |
-| Ready → first audible sound, cold | < 3,000 ms | 30 | device, first segment only gates start |
-| Pause → silence | < 100 ms | 30 | device |
+| Warm full prepare, all files cached + verified | < 800 ms | 30 | mid-tier device, 10-min session |
+| Cold full prepare, whole session | < 25 s | 30 | mid-tier device, 20-min session, from plan-in-hand |
+| Full-ready → first output, warm player | < 800 ms | 30 | device |
+| Full-ready → first output, cold player | < 3,000 ms | 30 | device; **all** required media already verified |
+| Pause intent → audio stopped | < 100 ms | 30 | device; callback-measured, hardware latency stated separately |
 | Resume → audio | < 250 ms | 30 | device |
 | Playback drift at any segment boundary | ≤ 1,000 ms absolute | every boundary, 10-min session | device |
 | Relaunch → resumable UI | < 1,500 ms | 30 | device, offline |
 | Checkpoint write | < 30 ms, never blocking audio stop | 100 | device |
 
-**DESIGN_DECISION — cold prepare must not gate start.** Only the first required
-segment gates `start`; the rest continue in the background. A user must not wait
-25 seconds to begin.
+**AMENDED A1 — there is no first-segment start.** `start` requires the whole
+required set verified (§6.1 as amended). Cold full prepare and cold player start
+are **two separate measurements** and must not be combined into one number: the
+< 25 s figure covers preparing every required file, the < 3,000 ms figure covers
+the player's cold start once they are all ready. Progressive-ready and
+background synthesis during playback are **out of scope for this package** — one
+readiness model, not two.
 
 **DESIGN_DECISION — memory measurement scope.** The 40 MB client audio budget is
 **total process resident memory attributable to audio**: decoded buffers, player
@@ -1019,8 +1063,9 @@ chain.
   `AudioSessionPort` implementation (interface unchanged).
 - **Data:** none.
 - **Acceptance:** cases 1, 3b; bells bundled and loadable.
-- **Rollback:** revert wiring to the silent defaults; the app degrades to
-  today's behaviour rather than breaking.
+- **Rollback (AMENDED A6):** stop admitting new audible runs and offer the
+  user-selected silent mode or an explicit unavailable state. Reverting to a
+  silent no-op provider that still reports audible completions is **forbidden**.
 
 ### Slice B — Prepare, cache, resolved timing, offline, silent mode
 
@@ -1066,8 +1111,10 @@ chain.
   uniqueness guarantee on `command_id` per session.
 - **Acceptance:** cases 8, 9a, 9b, 9c, 10b, and §9.6's six failure cases.
   **The G6 sequence-regression concern gets a failing test first**, then a fix.
-- **Rollback:** the outbox degrades to in-memory; recoverability is reduced and
-  **must be reported as reduced**, not hidden.
+- **Rollback (AMENDED A6):** durable storage stays; if it cannot be used, the
+  app stops guaranteeing recoverable runs and says so. Degrading to an
+  in-memory outbox is **forbidden** — it silently drops the guarantee it was
+  introduced to provide.
 
 ### Slice E — Completion, feedback, history, exposure, accessibility, compliance
 
@@ -1078,7 +1125,9 @@ chain.
 - **Data:** locally persisted completion/feedback pending records.
 - **Acceptance:** cases 2, 10a; accessibility unchanged; exposure fires on audio
   output started, not on session start.
-- **Rollback:** hide the pending-state UI; data stays.
+- **Rollback (AMENDED A6):** data stays and stays readable. Hiding the
+  pending-sync state is **forbidden**: a completion shown as confirmed when it
+  is not is the defect this slice exists to remove.
 
 ### Slice F — Regression, device, performance, evidence, remote closure
 
@@ -1102,6 +1151,213 @@ DoD.** This round performs none of it.
 
 Personalization, reminders, paid subscriptions, social, health, camera/mic,
 real-time cloud generation, brand finalisation, OCI production deployment.
+
+## 13A. Binding amendments (review of `dc93e84`)
+
+Accepted `PROGRAM004R_SDD_ACCEPTED_WITH_BINDING_AMENDMENTS`. A1 and A5 are
+applied in place above (§6.1, §9.1, §11.4, §13 rollbacks). A2, A3, A4, A6, A7
+and A8 are normative here and override anything earlier that disagrees.
+
+### A2 — Resolution is established locally; sync is not a playback gate
+
+**DESIGN_DECISION.** The device computes `resolution_hash` under a versioned
+canonicalisation, persists the resolution together with the full playback data,
+and *then* reaches `ready`. A server ACK is **never** a precondition for an
+offline start or resume.
+
+Canonicalisation is pinned so two languages cannot disagree: **UTF-8**, **NFC**,
+**fixed field order**, **omit nulls**, **integer milliseconds only** (no
+floats), and an explicit `canonicalization_version`. Shared fixtures with
+expected hashes are committed and run by both implementations.
+
+The server recomputes the same hash with the same algorithm and validates
+**content**, not just sign: segment set identity and order against the frozen
+plan, no unknown/duplicate/missing ids, numeric ranges, total duration, silence
+floors, and version fields. Non-negativity alone is not validation.
+
+Three states, kept apart: `LOCAL_RESOLVED`, `SERVER_VALIDATED`, `SYNC_CONFLICT`.
+Server validation is **not** a claim that the server measured audio or that
+anyone heard it.
+
+Audio measurements are recorded as `measurement_source = device_reported`. **No
+audio bytes are uploaded** and **no absolute device path is ever sent** to the
+backend. Creating a session with no local plan at all is explicitly outside this
+package.
+
+A resolution is frozen before playback starts and is never edited in place. If
+the runtime must rebuild, playback stops at a legal boundary and a **new
+resolution revision** is created, retaining the previous revision, the unmodified
+already-played prefix, and the reason.
+
+### A3 — One owner for audio policy
+
+**DESIGN_DECISION.** The stack stays `just_audio` + `audio_service` +
+`audio_session` + `flutter_tts` + `sqflite` + `path_provider`, and the version
+combination is proven in Slice A by a real resolver, a committed lockfile, a
+native build and a smoke test. **Pub scores are not compatibility evidence** and
+the SDD's table is provenance for the decision, nothing more. The `sqflite`
+version in §5.2 is explicitly re-resolved at pin time — the review could not
+independently confirm 2.4.4 versus 2.4.3, and the lockfile is the authority.
+
+A **single `AudioHandler`/runtime** owns UI state, lock screen, focus, route,
+media buttons and player callbacks. There is exactly one audio-session owner and
+one activation order.
+
+`just_audio` may auto-resume after an interruption by default. This package
+constructs the player with **`handleInterruptions: false`** and
+**`handleAudioSessionActivation: false`**, taking both over, so that focus or
+route loss stops sound immediately and focus regain **always** stays paused.
+Only an explicit user action resumes. The common audio-session configuration is
+applied after all plugins are loaded, so TTS cannot overwrite the player's
+category.
+
+"Stop sound before writing state" is a **program-order guarantee**, not a claim
+of zero hardware latency. The callback-to-stop interval is measured; the
+hardware interval is stated as unmeasured where it is.
+
+Playback sources are restricted to **verified local file/asset URIs**. Remote
+URLs, `LockCachingAudioSource`, proxy `StreamAudioSource` and remote artwork are
+not used, and no global cleartext/ATS relaxation is introduced.
+
+TTS waits for a real completion or error signal. A queued request, a `1` return
+value, or a filename existing are **not** completion. One serialised queue per
+engine, single-flight per key, every async result bound to a
+`(request_id, generation)` pair so a cancelled or superseded callback can never
+mark anything ready or make sound. Extensions match the real container
+(WAV vs CAF). Empty, truncated, unknown-duration or undecodable output is never
+`ready`.
+
+### A4 — Long silence is scheduled media, and outputs are immutable
+
+**DESIGN_DECISION.** Required silence is a **bounded local media source the
+native pipeline consumes**, not a Dart timer that has to wake up. Auto-advance
+across a long silence with the screen locked is verified on both platforms.
+Silence is never decoded as one resident PCM block; its size, duration, boundary
+error and sample format count against the cache and memory budgets. Internal
+chunking must not change a logical segment's identity or double-count it.
+
+Disposing the UI does not end a run the runtime owns, and returning **attaches**
+rather than constructing a second player. Nothing keeps the process alive with
+meaningless silence after a session ends.
+
+`playing == true`, a `ready` callback, a seek, or a playlist index change are
+**not** completion. Auto-skip past a required segment on error must never leave
+a run reporting `completed`.
+
+`render_key` indexes inputs; `audio_sha256` identifies immutable bytes. Outputs
+are stored at immutable blob paths, a `render_key` maps to one or more verified
+outputs, and a resolution binds a **specific output hash** — never an
+overwritable slot. Same input producing different bytes is not a bug, but it may
+not overwrite a file a live resolution references: either the original bytes are
+restored or a new resolution revision is made. An old hash is never used to play
+new bytes.
+
+Pinning covers committed assets while `preparing`, and `ready`, `playing`,
+`paused`, `interrupted` and any run promised as resumable. LRU may not delete
+the next segment because a run is paused or the app restarted; pins survive
+relaunch.
+
+The database and the filesystem are not one transaction. The order is
+**temporary write → flush and verify → atomic publish → commit the DB
+reference**, with orphan and partial-file reconciliation on start-up. The DB
+never references an unpublished file. SQLite journal and `synchronous` settings
+are recorded, and process-kill durability is tested while power-loss durability
+is stated as untested.
+
+### A6 — Identity, transactions and reconciliation
+
+**DESIGN_DECISION.** The runtime is the **single writer** of local sequence and
+outbox state; the UI does not open a second write path.
+
+Four identifiers, never conflated: stable `command_id`; `event_id`; a client
+`command_sequence`; and a server `revision`. Unordered observational events and
+ordered commands do not share a deduplication namespace, and an event's arrival
+never consumes a command's sequence or suppresses its state effect.
+
+Server command handling puts **ownership and deletion checks, idempotency
+identity, payload digest, state validation, projection update, and the journal
+or result record in one transaction**, protected by a real unique constraint and
+atomic upsert or row serialisation rather than select-then-insert. The same
+command id with the same payload returns the existing result; the same id with a
+different payload is an explicit **conflict**. Event batches survive concurrent
+duplicates without becoming a 500.
+
+ACK removes only confirmed operations. A server snapshot is separate from an
+operation's result: an **older snapshot never rolls back local sequence or
+state, never swallows un-ACKed operations, never revives a terminal run, and
+never produces `playing` with no running clock.** Adding `max(sequence)` is not
+a solution to ordering.
+
+**G6 gets a deterministic reproduction first.** If the original hypothesis
+cannot be reproduced it is recorded as **refuted** or **not reproduced** — a red
+test is never fabricated — and the new invariants are tested regardless.
+
+Recovery persists **logical playback position and confirmed boundary**, never a
+`Stopwatch` value carried across a reboot. A relaunch always presents
+`paused`/resumable and never starts making sound on its own; a new monotonic
+anchor is established when the user resumes.
+
+Guest deletion covers a local tombstone, in-flight fencing, outbox purge and the
+server cascade. A late request may not recreate a deleted guest or session, and
+a legitimate deletion is not retried as a transient error. iOS file protection
+and Android backup/data-extraction rules are verified so deleted guest data
+cannot be restored; the shared product audio cache is classified separately.
+
+### A7 — Completion and exposure semantics
+
+**DESIGN_DECISION.** A voice experiment's exposure fires **once**, and only when
+the speech segment corresponding to the assigned treatment has real
+**player-output evidence**. An opening bell, silent mode, a synthesis-completed
+callback, `session_started`, and player loading/ready are **all excluded**.
+
+Output evidence is named at its platform-observable level — playing state on the
+speech source plus position advancing, or a usable native output event — and is
+labelled **device-reported delivery evidence**. It is never described as the
+user hearing, understanding, or benefiting, and no microphone is added to try to
+prove otherwise.
+
+Completion requires valid coverage of **every required logical segment** plus
+genuine completion of the final medium. Abandonment is never `completed`.
+
+`completion_ratio` is **non-overlapping covered effective duration ÷ resolved
+required duration** — not completed-segment count, which would weight a
+one-second bell like an eight-minute silence. A legitimate replay after recovery
+is recorded as a replay and does not add to completion or exposure again.
+
+`audio_mode`, `delivery_evidence_version`, `resolution_hash`, pause reason and
+pending-sync state are stored separately. Sessions predating this package stay
+readable and are marked **legacy / unverified** where audio evidence is absent;
+a historical countdown is never promoted to an audible completion.
+
+Feedback is durably saved locally **first**, then shown as saved or
+pending-sync. The network never blocks leaving the screen, and a failed disk
+write is never reported as saved. Completion, feedback and history agree in
+their final projection.
+
+Migrations are additive with explicit versioning and an old-client path. Upgrade
+and compatible-read are tested; **no upgrade is achieved by clearing data**, and
+downgrade is only exercised against an isolated test database.
+
+### A8 — Module placement, and evidence that means something
+
+**DESIGN_DECISION.** "Seven of ten modules lack a production caller" is a
+positioning symptom, not a completion percentage. The acceptance criterion is
+**every required user behaviour has a production owner, caller and test** — not
+"every Python file is imported".
+
+Logic genuinely executed by Dart/native — clock, scheduler, route policy, device
+cache — is **not** force-wired into a Python HTTP path. Each such module is
+either kept with a real server-side purpose (resolution validation, replay),
+moved to reference/test-support as a cross-language oracle, or deleted. Empty
+call sites, decorative entry points and `isImplemented = true` flags are
+forbidden ways to pass a gate.
+
+Every slice that changes capability updates the SDK inventory, resolved native
+and transitive dependencies, real permissions, `PrivacyInfo`, data flow,
+retention and store mappings in the **same** slice. "No analytics" does not imply
+"no network capability": each package's enabled paths are checked for this
+application. No cloud TTS is delegated, so no subprocessor is invented, and no
+microphone, health or commerce capability is added.
 
 ## 14. Summary of this round
 
@@ -1128,4 +1384,7 @@ thresholds fixed before measurement.
 sequence-regression hypothesis, which must be reproduced before it is fixed;
 package version pinning, which happens in Slice A.
 
-**Disposition: `PROGRAM004R_SDD_READY_FOR_REVIEW`.**
+**Disposition: `PROGRAM004R_SDD_ACCEPTED_WITH_BINDING_AMENDMENTS_APPLIED`.**
+
+The amendments are normative from this commit. Implementation proceeds in the
+same task, on `program004r/real-audio-durable-playback`, starting at Slice A.
