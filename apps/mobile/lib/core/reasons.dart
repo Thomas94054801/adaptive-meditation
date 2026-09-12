@@ -18,7 +18,8 @@ const Map<String, String> _reasonText = <String, String>{
   'grounding_preferred': 'attention settles more easily in the body',
   'cognitive_observation': 'watching thoughts suits a busy mind',
   'stabilize_attention': 'the breath gives attention one steady place',
-  'experienced_open_awareness': 'you have enough experience for an open practice',
+  'experienced_open_awareness':
+      'you have enough experience for an open practice',
   'recognize_reactivity': 'noticing feeling tone catches reactions early',
   'experience_progression': 'this matches your experience level',
   'fallback_practice_used': 'the closest available practice was chosen',
@@ -33,11 +34,13 @@ const Map<String, String> _contextualLeadIn = <String, String>{
   'goal_sleep': 'Winding down works better from the body than from the head.',
   'goal_overthinking':
       'A busy mind settles faster with something concrete to rest on.',
-  'goal_stress': 'Stress eases when attention has one steady place to return to.',
+  'goal_stress':
+      'Stress eases when attention has one steady place to return to.',
   'goal_focus': 'Attention steadies when it has a single anchor.',
   'goal_emotional_reset':
       'Strong feeling passes more easily when it is met rather than pushed away.',
-  'goal_general': 'A regular practice builds on what you already find workable.',
+  'goal_general':
+      'A regular practice builds on what you already find workable.',
 };
 
 /// The explanation for a recommendation, in the requested variant.

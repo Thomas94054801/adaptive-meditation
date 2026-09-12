@@ -72,7 +72,10 @@ class GuestIdentity {
     }
 
     if (stored != null && stored.isNotEmpty) {
-      return _cached = GuestIdentityResult(stored, GuestIdentitySource.restored);
+      return _cached = GuestIdentityResult(
+        stored,
+        GuestIdentitySource.restored,
+      );
     }
 
     final String created = generateUuidV4();
