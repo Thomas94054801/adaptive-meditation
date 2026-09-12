@@ -120,10 +120,13 @@ validation rather than at runtime.
 ### Backend
 
 ```
-523 tests, exit 0, PostgreSQL 16.15
+522 tests, exit 0, PostgreSQL 16.15
 ruff check . && ruff format --check .   clean
 mypy                                    clean, 69 source files
 ```
+
+Confirmed on the hosted runner, not only locally: CI run **34682585387**,
+`522 passed` in the `Backend (lint, types, tests)` job, all six jobs green.
 
 Migrations 0004 and 0005 each verified `upgrade -> downgrade one step ->
 upgrade`, with `alembic check` reporting no pending autogenerate diff.
@@ -138,11 +141,16 @@ flutter analyze                         clean
 ### Gates
 
 ```
-credential scan                         clean, 229 files
+credential scan                         clean
 compliance consistency                  PASS
-android store readiness                 PASS
+android store readiness                 PASS   (source and merged manifest)
+bell provenance                         current
 store release gate                      BLOCKED — brand, bundle id, domain only
 ```
+
+All of the above also ran on the hosted runner in CI **34682585387**, including
+the merged-manifest audit, which only CI can do: the source manifest alone
+cannot see permissions a plugin contributes.
 
 The release gate's blocked items are STORE_IDENTITY_GATE external dependencies.
 They are not engineering work and do not block this program.
