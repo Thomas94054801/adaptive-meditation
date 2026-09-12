@@ -171,10 +171,10 @@ void main() {
   });
 
   group('recovery', () {
-    test('the backend view wins after a reconnect', () {
+    test('a newer backend view wins after a reconnect', () {
       final PlaybackController c = playing();
       c.tickTo(50000);
-      c.adopt(state: RunState.paused, positionMs: 120000, sequence: 9);
+      c.reconcile(state: RunState.paused, positionMs: 120000, sequence: 9);
       expect(c.state, RunState.paused);
       expect(c.positionMs, 120000);
       expect(c.sequence, 9);

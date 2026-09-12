@@ -443,6 +443,10 @@ class SessionResolutionRepository:
         return row, True
 
 
+class SequenceTaken(Exception):
+    """Another record already holds that sequence number."""
+
+
 class ResolutionRevisionConflict(Exception):
     """The same revision arrived twice with different content."""
 
@@ -624,6 +628,63 @@ class SessionEventRepository:
             self._session.add_all(rows)
             self._session.flush()
         return len(rows), len(events) - len(rows)
+
+    def command_record(self, session_id: uuid.UUID, command_id: str) -> models.SessionEvent | None:
+        """The journal row a command already wrote, if any."""
+        stmt = select(models.SessionEvent).where(
+            models.SessionEvent.session_id == session_id,
+            models.SessionEvent.command_id == command_id,
+        )
+        return self._session.execute(stmt).scalar_one_or_none()
+
+    def append_command(
+        self,
+        *,
+        session_id: uuid.UUID,
+        sequence: int,
+        event_type: str,
+        command_id: str,
+        payload_digest: str,
+        segment_id: str | None = None,
+        elapsed_ms: int = 0,
+        detail: dict[str, object] | None = None,
+    ) -> tuple[models.SessionEvent, bool]:
+        """Record a command's journal entry, atomically.
+
+        Relies on the ``(session_id, command_id)`` unique constraint rather
+        than a preceding SELECT. Two concurrent retries of the same command
+        both pass a select-then-insert check and then both insert; only a
+        constraint stops that, and a savepoint is what lets this recover from
+        the loser's IntegrityError without losing the surrounding transaction.
+        """
+        savepoint = self._session.begin_nested()
+        row = models.SessionEvent(
+            id=uuid.uuid4(),
+            session_id=session_id,
+            sequence=sequence,
+            event_type=event_type,
+            segment_id=segment_id,
+            elapsed_ms=max(0, elapsed_ms),
+            command_id=command_id,
+            payload_digest=payload_digest,
+            detail=detail,
+            occurred_at=utcnow(),
+        )
+        self._session.add(row)
+        try:
+            savepoint.commit()
+        except sa.exc.IntegrityError:
+            savepoint.rollback()
+            existing = self.command_record(session_id, command_id)
+            if existing is None:
+                # The conflict was on (session, sequence): something else
+                # already holds that number. A typed error, because the caller
+                # treats it completely differently from a command retry.
+                raise SequenceTaken(
+                    f"sequence {sequence} is already recorded for this session"
+                ) from None
+            return existing, False
+        return row, True
 
     def command_already_applied(self, session_id: uuid.UUID, command_id: str) -> bool:
         """Whether this command_id is already in the journal.

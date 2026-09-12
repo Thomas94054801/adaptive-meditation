@@ -108,6 +108,17 @@ class PlaybackEvent {
   };
 }
 
+/// Whether a reconciliation was applied, and why it was refused if not.
+enum ReconcileOutcome {
+  applied,
+
+  /// The snapshot was older than what this client already knows.
+  staleSnapshot,
+
+  /// The run has already ended; a snapshot cannot revive it.
+  terminalRun,
+}
+
 /// The player, with no timer, no audio and no widget in it.
 ///
 /// Everything is driven by [tickTo], which the caller supplies from a monotonic
@@ -227,19 +238,33 @@ class PlaybackController {
     _positionMs = plan.resumePosition(_positionMs);
   }
 
-  /// Adopt the backend's view after a reconnect or a relaunch.
-  ///
-  /// The server is authoritative for state and sequence: it is the thing that
-  /// survived the process dying.
-  void adopt({
+  /// Adopt a server snapshot, refusing anything that would go backwards.
+  ReconcileOutcome reconcile({
     required RunState state,
     required int positionMs,
     required int sequence,
   }) {
+    if (_state.isTerminal && !state.isTerminal) {
+      // A finished run stays finished. A late snapshot describing it as
+      // playing is describing a moment that has passed.
+      return ReconcileOutcome.terminalRun;
+    }
+    if (sequence < _sequence) {
+      return ReconcileOutcome.staleSnapshot;
+    }
+
     _state = state;
-    _positionMs = positionMs < 0 ? 0 : positionMs;
+    // Position only ever moves forward: a snapshot taken before the last
+    // local tick is not evidence that time went backwards.
+    _positionMs = positionMs > _positionMs ? positionMs : _positionMs;
     _sequence = sequence;
+    // Never leave a playing controller without a clock anchor. A resumed run
+    // establishes a new anchor when the user resumes, never here.
     _runningSinceMs = null;
+    if (_state == RunState.playing) {
+      _state = RunState.paused;
+    }
+    return ReconcileOutcome.applied;
   }
 
   /// Take the queued events for sending. They are removed only on success.

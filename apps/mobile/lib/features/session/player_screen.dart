@@ -286,7 +286,10 @@ class _PlayerScreenState extends State<PlayerScreen> {
       return;
     }
     setState(() {
-      _controller.adopt(
+      // reconcile, not adopt: it refuses a snapshot that would lower the
+      // sequence, move position backwards or revive a terminal run. The old
+      // adopt did all three, which is the G6 failure.
+      _controller.reconcile(
         state: RunState.values.firstWhere(
           (RunState s) => s.wireValue == state.runState,
           orElse: () => _controller.state,

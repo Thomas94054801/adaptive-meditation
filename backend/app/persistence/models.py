@@ -298,6 +298,9 @@ class SessionEvent(Base):
     __tablename__ = "session_events"
     __table_args__ = (
         sa.UniqueConstraint("session_id", "sequence", name="uq_session_events_sequence"),
+        # Program004R A6: command identity is enforced by the database, not by
+        # a select-then-insert that two concurrent retries can both pass.
+        sa.UniqueConstraint("session_id", "command_id", name="uq_session_events_command"),
         sa.CheckConstraint("sequence >= 0", name="ck_session_events_sequence"),
         sa.CheckConstraint("elapsed_ms >= 0", name="ck_session_events_elapsed"),
         sa.CheckConstraint(
@@ -317,6 +320,10 @@ class SessionEvent(Base):
         sa.Integer, nullable=False, default=0, server_default="0"
     )
     command_id: Mapped[str | None] = mapped_column(sa.String(64), nullable=True, index=True)
+    # Digest of the command's meaningful payload. The same id arriving with
+    # different content is a client defect, not an ordinary duplicate, and
+    # without a digest the two are indistinguishable.
+    payload_digest: Mapped[str | None] = mapped_column(sa.String(64), nullable=True)
     detail: Mapped[dict[str, object] | None] = mapped_column(JSONType, nullable=True)
     occurred_at: Mapped[datetime] = mapped_column(
         sa.DateTime(timezone=True), nullable=False, server_default=sa.func.current_timestamp()

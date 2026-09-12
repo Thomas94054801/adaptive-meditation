@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import uuid
 
 from fastapi import APIRouter, HTTPException, Response, status
@@ -76,6 +77,7 @@ from app.persistence.repositories import (
     EventDraft,
     GuestRepository,
     ResolutionRevisionConflict,
+    SequenceTaken,
     SessionDefinitionRepository,
     SessionEventRepository,
     SessionRepository,
@@ -474,10 +476,28 @@ def apply_playback_command(
     """
     row = _owned_session(session_id, guest_id, db)
     events = SessionEventRepository(db)
-    if events.command_already_applied(row.id, payload.command_id):
-        # SDD 5.4: a replayed command_id returns the same result without
-        # re-applying it. The sequence rule below catches an identical retry;
-        # this catches the same command retried under a fresh sequence.
+
+    # Program004R A6. A command is identified by its id and validated by a
+    # digest of its meaningful payload: the same id with the same content
+    # returns the existing result, the same id with *different* content is a
+    # client defect and gets a conflict rather than silently keeping either
+    # version.
+    digest = _command_digest(payload)
+    existing = events.command_record(row.id, payload.command_id)
+    if existing is not None:
+        if existing.payload_digest is not None and existing.payload_digest != digest:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail={
+                    "code": "command_payload_conflict",
+                    "message": (
+                        "this command_id was already applied with different "
+                        "content; reusing an id for a different command is a "
+                        "client defect, not a retry"
+                    ),
+                },
+            )
+        # A genuine retry. The same result, without re-applying anything.
         return _playback_state(row, applied=False)
 
     try:
@@ -512,14 +532,24 @@ def apply_playback_command(
         elif outcome.state.value == "abandoned":
             sessions.finish(row, completed=False)
 
-        _, created = events.append(
-            session_id=row.id,
-            sequence=payload.sequence,
-            event_type=_EVENT_FOR_COMMAND[payload.command],
-            segment_id=payload.segment_id,
-            elapsed_ms=outcome.elapsed_ms,
-            command_id=payload.command_id,
-        )
+        try:
+            _, created = events.append_command(
+                session_id=row.id,
+                sequence=payload.sequence,
+                event_type=_EVENT_FOR_COMMAND[payload.command],
+                segment_id=payload.segment_id,
+                elapsed_ms=outcome.elapsed_ms,
+                command_id=payload.command_id,
+                payload_digest=digest,
+            )
+        except SequenceTaken as error:
+            # Commands and events share one per-session counter. Applying the
+            # state change while losing its journal entry would leave a run
+            # nobody can reconstruct, so the whole request rolls back.
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail={"code": "sequence_conflict", "message": str(error)},
+            ) from None
         if not created:
             # Commands and events share one per-session counter. A command that
             # lands on a sequence already holding something else means the
@@ -757,6 +787,25 @@ _EVENT_FOR_COMMAND = {
     "fail": "playback_failed",
     "recover": "session_prepared",
 }
+
+
+def _command_digest(payload: PlaybackCommandRequest) -> str:
+    """Digest the fields that make a command mean what it means.
+
+    The command itself, the position it reports and the segment it names.
+
+    **Sequence is deliberately excluded.** Sequence is transport ordering, not
+    identity: SDD A6 requires a retry to keep its original command id, and a
+    client that bumps its counter while re-sending the same stored operation
+    is still retrying that operation. Including sequence here would turn every
+    such retry into a false conflict, which is the opposite of the guarantee.
+    """
+    parts = (
+        payload.command,
+        str(payload.elapsed_ms),
+        payload.segment_id or "",
+    )
+    return hashlib.sha256("\x00".join(parts).encode("utf-8")).hexdigest()
 
 
 def _playback_state(row: models.Session, *, applied: bool) -> PlaybackStateResponse:
