@@ -6,7 +6,10 @@ plugins {
 
 android {
     namespace = "com.adaptivemeditation.adaptive_meditation"
-    compileSdk = flutter.compileSdkVersion
+    // Pinned literally, not inherited from flutter.compileSdkVersion.
+    // Inheriting the right value today does not guarantee it after an SDK
+    // upgrade, and Google Play's requirement is a hard gate, not a default.
+    compileSdk = 36
     ndkVersion = flutter.ndkVersion
 
     compileOptions {
@@ -19,8 +22,11 @@ android {
         applicationId = "com.adaptivemeditation.adaptive_meditation"
         // You can update the following values to match your application needs.
         // For more information, see: https://flutter.dev/to/review-gradle-config.
-        minSdk = flutter.minSdkVersion
-        targetSdk = flutter.targetSdkVersion
+        minSdk = 24
+        // Google Play requires Android 16 (API 36) for new applications as of
+        // 2026. scripts/check_android_store_readiness.py fails the build below
+        // this value.
+        targetSdk = 36
         // Uses the version code from pubspec.yaml. When using split APKs, 1000 * ABI_VERSION
         // is added automatically by Flutter. (https://developer.android.com/studio/build/configure-apk-splits#configure-APK-versions)
         // You can force using the value of versionCode by specifying the `-P force-version-code-ignoring-abi=true`

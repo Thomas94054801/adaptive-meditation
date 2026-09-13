@@ -21,6 +21,11 @@ from dataclasses import dataclass
 # unlike Python's salted built-in hash().
 HASH_BUCKETS = 10_000
 
+# The one experiment with a live consumer (SDD_PROGRAM003 section 7). It varies
+# the wording of the recommendation explanation and nothing else: not the
+# practice, not the duration, not eligibility, not safety routing.
+EXPLANATION_COPY_EXPERIMENT = "recommendation_explanation_copy_v1"
+
 
 class ExperimentError(ValueError):
     """Raised when an experiment definition is unusable."""
@@ -78,6 +83,8 @@ REGISTRY: dict[str, Experiment] = {
     for experiment in (
         # Presentation only: how the recommendation reason is phrased.
         Experiment("reason_phrasing_v1", ("concise", "expanded")),
+        # Program003's first live consumer. Varies explanation wording only.
+        Experiment(EXPLANATION_COPY_EXPERIMENT, ("concise", "contextual")),
     )
 }
 

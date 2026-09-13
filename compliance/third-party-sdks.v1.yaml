@@ -1,0 +1,103 @@
+# Third-party SDK inventory.
+#
+# One entry per package that ships native code on iOS or Android. Dart-only
+# packages cannot reach a platform API and are listed separately for
+# completeness rather than audited individually.
+#
+# The goal is a minimal SDK surface. No package is added for analytics
+# convenience while first-party telemetry suffices.
+schema_version: 1
+program: Program003
+audited_on: "2026-09-12"
+
+prohibited_in_v1:
+  # Not "not currently used" - actively disallowed. Each of these would change
+  # the Apple privacy disclosure and the Play Data Safety answers, and none is
+  # needed for a meditation app to work.
+  - meta_sdk
+  - facebook_app_events
+  - advertising_attribution_sdk
+  - behavioral_advertising_sdk
+  - device_fingerprinting_sdk
+  - idfa_or_gaid_collection
+
+sdks:
+  - package: flutter_secure_storage
+    version: "11.1.0"
+    ios_native_code: false
+    android_native_code: true
+    data_collection: none
+    network_access: false
+    required_reason_api: false
+    privacy_manifest_present: false
+    tracking: false
+    purpose: >-
+      Federated entry point for Keychain and Keystore-backed storage of the
+      guest identifier. The Android implementation is in this package; it
+      declares no permissions.
+
+  - package: flutter_secure_storage_darwin
+    version: "0.4.2"
+    ios_native_code: true
+    android_native_code: false
+    data_collection: none
+    network_access: false
+    required_reason_api: false
+    privacy_manifest_present: true
+    tracking: false
+    purpose: Keychain implementation for iOS and macOS.
+
+  - package: http
+    version: "1.6.0"
+    ios_native_code: false
+    android_native_code: false
+    data_collection: none
+    network_access: true
+    required_reason_api: false
+    privacy_manifest_present: false
+    tracking: false
+    purpose: >-
+      HTTPS calls to this product's own backend only. No third-party endpoint is
+      contacted by the client.
+
+runtime:
+  - package: flutter
+    version: "3.47.3"
+    ios_native_code: true
+    android_native_code: true
+    data_collection: none
+    network_access: false
+    required_reason_api: true
+    required_reason_detail: >-
+      The engine declares UserDefaults (CA92.1) in its own bundled privacy
+      manifest. It is the runtime, not a third-party SDK chosen for a feature.
+    privacy_manifest_present: true
+    tracking: false
+    purpose: Application runtime.
+
+dart_only_dependencies:
+  - args
+  - async
+  - characters
+  - collection
+  - crypto
+  - meta
+  - typed_data
+  - vector_math
+  - web
+
+removed_in_program003:
+  - package: shared_preferences
+    removed_because: >-
+      Replaced by platform-secure storage. Removing it also removed the app's
+      only UserDefaults usage, so the app-level privacy manifest declares no
+      Required Reason API at all.
+
+diagnostics_vendors:
+  crashlytics: not_integrated
+  sentry: not_integrated
+  policy: >-
+    A third-party diagnostics vendor requires a data-inventory update, an SDK
+    audit entry, an Apple privacy update and a Google Data Safety update before
+    integration. V1 ships the DiagnosticsProvider interface with a local
+    implementation instead.

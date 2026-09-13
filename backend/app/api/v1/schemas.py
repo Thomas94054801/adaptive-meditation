@@ -27,12 +27,45 @@ class CheckInResponse(BaseModel):
     check_in: CheckIn
 
 
+class ExperimentVariantResponse(BaseModel):
+    """The variant assigned to this caller for one presentation experiment.
+
+    Returned with the recommendation so the client knows which wording to show.
+    Returning it is *assignment*, not exposure: the client reports exposure
+    separately, once it has actually rendered the variant.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    experiment_id: str
+    variant: str
+
+
 class RecommendationResponse(Recommendation):
     """The engine output, plus the public label the client shows."""
 
     model_config = ConfigDict(extra="forbid")
 
     practice_public_name: str
+    explanation_variant: ExperimentVariantResponse | None = None
+
+
+class ExposureRequest(BaseModel):
+    """Reports that a variant was actually shown to the user."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    experiment_id: str = Field(max_length=64)
+    context: Annotated[str, Field(min_length=1, max_length=64)]
+
+
+class ExposureResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    experiment_id: str
+    variant: str
+    context: str
+    recorded: bool
 
 
 class SessionStageResponse(BaseModel):
@@ -166,6 +199,7 @@ class GuestExportResponse(BaseModel):
     sessions: list[dict[str, Any]]
     feedback: list[dict[str, Any]]
     experiment_assignments: list[dict[str, Any]]
+    experiment_exposures: list[dict[str, Any]]
 
 
 class HealthResponse(BaseModel):
@@ -180,6 +214,15 @@ class HealthResponse(BaseModel):
     practices_loaded: int
     protocols_loaded: int
     ai_provider_configured: bool
+
+
+class DisclaimerResponse(BaseModel):
+    """The single wellness disclaimer surface."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    title: str
+    body: str
 
 
 class ErrorBody(BaseModel):

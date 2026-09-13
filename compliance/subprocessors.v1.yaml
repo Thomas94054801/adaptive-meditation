@@ -1,0 +1,42 @@
+# Subprocessor inventory.
+#
+# Only actual processors. Hypothetical future AI or text-to-speech providers are
+# deliberately absent: listing a processor that processes nothing would make the
+# privacy policy inaccurate in the direction that matters.
+schema_version: 1
+program: Program003
+as_of: "2026-09-12"
+
+subprocessors:
+  - name: Oracle Cloud Infrastructure
+    purpose: Application hosting and managed compute for the API and database.
+    data_categories:
+      - guest_identifier
+      - wellness_check_in
+      - session_history
+      - feedback
+      - outcome_evidence
+      - experiment_assignment
+    region_or_scope: Single OCI Ampere A1 tenancy operated by the developer.
+    required_for_service: true
+    privacy_policy: https://www.oracle.com/legal/privacy/
+    note: >-
+      Infrastructure provider only. No application data is shared with Oracle
+      for its own purposes.
+
+not_engaged:
+  # Recorded so their absence is a decision on file rather than an oversight.
+  - name: analytics_vendor
+    status: none engaged
+  - name: crash_reporting_vendor
+    status: none engaged
+  - name: advertising_network
+    status: none engaged, prohibited in V1
+  - name: generative_ai_provider
+    status: >-
+      none engaged. The recommendation engine is deterministic and runs with no
+      AI credential; no user data is sent to a model provider.
+  - name: text_to_speech_provider
+    status: none engaged. Sessions render text, not synthesised speech.
+  - name: email_or_push_provider
+    status: none engaged. No account, no email, no push notifications in V1.

@@ -1,0 +1,73 @@
+# Retention policy.
+#
+# Short by construction. Nothing is retained "in case it is useful later": each
+# entry states what ends the retention and why the period is what it is.
+schema_version: 1
+program: Program003
+as_of: "2026-09-12"
+
+retention:
+  guest_profile:
+    retained_until: user deletion
+    automatic_expiry: none
+    rationale: >-
+      The guest row is the key everything else cascades from. It persists so a
+      returning user still has their history, and disappears the moment they ask.
+
+  check_ins:
+    retained_until: user deletion, by cascade from the guest profile
+    automatic_expiry: none
+    rationale: Session history is the product feature; expiring it would remove it.
+
+  sessions:
+    retained_until: user deletion, by cascade
+    automatic_expiry: none
+
+  session_feedback:
+    retained_until: user deletion, by cascade
+    automatic_expiry: none
+
+  recommendation_candidates:
+    retained_until: user deletion, by cascade
+    automatic_expiry: none
+    rationale: >-
+      Kept for offline rule-set evaluation. Bounded at one row per practice per
+      session, so it grows linearly with sessions rather than combinatorially.
+
+  experiment_assignments:
+    retained_until: user deletion, by cascade
+    automatic_expiry: none
+
+  experiment_exposures:
+    retained_until: user deletion, by cascade
+    automatic_expiry: none
+
+  data_exports:
+    retained_until: not retained
+    rationale: >-
+      Generated on demand and streamed in the response. No copy is stored
+      server-side, so there is no export artefact to leak or to have to delete.
+
+  server_logs:
+    retained_until: 30 days
+    contains_personal_data: false
+    rationale: >-
+      Operational only. Request ids and status codes; no guest identifier, no
+      check-in payload, no free text - see compliance logging rules and
+      backend/app/observability.
+
+  database_backups:
+    status: not configured
+    rationale: >-
+      No backup schedule exists yet. Recorded as absent rather than described as
+      if it existed; when one is added it needs its own retention entry and a
+      deletion-propagation answer.
+
+deletion:
+  mechanism: database cascade from the guest profile row
+  endpoint: DELETE /v1/me/data
+  propagation: immediate, single transaction
+  soft_delete: false
+  rationale: >-
+    Hard delete, not a tombstone. A soft delete would mean the honest answer to
+    "is it gone" is "no", which is not what the deletion surface says.

@@ -1,0 +1,74 @@
+# Google Play store listing, en-US.
+#
+# Same constraints as the Apple listing: no medical claims, no invented brand.
+locale: en-US
+status: draft
+brand_status: BLOCKED_BRAND_IDENTITY
+
+app_name: "[working title] Adaptive Meditation"
+
+short_description: >-
+  Meditation chosen from how you feel right now. No account, no subscription.
+
+full_description: |
+  Adaptive Meditation picks a meditation practice from how you actually feel
+  right now, instead of asking you to browse a catalogue and guess.
+
+  Answer six short questions - what would help most, and how stressed,
+  energetic, mentally busy and sleepy you are - plus how long you have and how
+  much experience you bring. The app selects a practice that fits, builds a
+  session for the time available, and guides you through it.
+
+  SEVEN PRACTICE FAMILIES
+
+  Breath Awareness, Body Awareness, Feeling Tone, Thought Observation, Kindness
+  Practice, Open Awareness and Mindful Walk. All drawn from long-established
+  contemplative traditions and presented in plain modern language.
+
+  DETERMINISTIC, NOT A BLACK BOX
+
+  The practice is chosen by a rules engine, not by a recommendation model and
+  not by AI. The same answers always give the same suggestion, and the app
+  explains its reasoning in plain English.
+
+  NO ACCOUNT
+
+  No sign-up, no email, no password. Sessions are stored against a random
+  identifier generated on your device. Export or delete everything from inside
+  the app whenever you want.
+
+  WHAT IT DOES NOT DO
+
+  No subscription. No ads. No tracking. No camera, microphone, location,
+  contacts or health data access.
+
+  This is a wellness and mindfulness app. It does not diagnose, treat or cure
+  any condition and is not a substitute for professional care. It cannot help in
+  an emergency.
+
+category: Health & Fitness
+tags:
+  - meditation
+  - mindfulness
+  - relaxation
+  - sleep
+  - stress relief
+
+content_rating_questionnaire:
+  violence: none
+  sexuality: none
+  language: none
+  controlled_substances: none
+  user_generated_content: false
+  shares_location: false
+  digital_purchases: false
+  expected_rating: Everyone
+
+target_audience:
+  age_groups: ["18+"]
+  appeals_to_children: false
+  designed_for_families: false
+
+contact_email: BLOCKED_BRAND_IDENTITY
+contact_website: BLOCKED_BRAND_IDENTITY
+privacy_policy_url: BLOCKED_BRAND_IDENTITY

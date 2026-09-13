@@ -1,49 +1,110 @@
 import 'dart:math';
 
-import '../platform/providers.dart';
+import '../platform/secure_identity_store.dart';
+
+/// How the current guest identity was obtained.
+enum GuestIdentitySource {
+  /// Read back from platform-secure storage.
+  restored,
+
+  /// Freshly generated and persisted.
+  created,
+
+  /// Generated but *not* persisted, because secure storage was unavailable.
+  ///
+  /// The session works; the history will not be reachable after a restart. The
+  /// UI must be able to say so rather than implying durability it does not have.
+  ephemeral,
+}
+
+class GuestIdentityResult {
+  const GuestIdentityResult(this.id, this.source, {this.failure});
+
+  final String id;
+  final GuestIdentitySource source;
+  final SecureStorageException? failure;
+
+  bool get isPersistent => source != GuestIdentitySource.ephemeral;
+}
 
 /// The guest's own identifier.
 ///
-/// A random UUIDv4 and nothing else. Deliberately *not* derived from the
-/// device: no hardware fingerprint, no IMEI, no advertising identifier, no
-/// MAC address. It exists so a guest can find their own history and delete it,
-/// which is the only reason server-side guest data is kept at all.
+/// A random UUIDv4 held in platform-secure storage - Keychain on iOS,
+/// Keystore-backed storage on Android. Deliberately *not* derived from the
+/// device: no IMEI, IDFA, GAID, MAC address, hardware or vendor fingerprint.
 ///
-/// It is not a credential. Anyone holding the value can read that guest's
-/// sessions, which is why nothing sensitive is stored against it and why the
-/// app never transmits it anywhere but its own backend.
+/// It is not a credential. It is the only handle a guest has on their own data,
+/// which is why it gets the platform's real store and why losing it silently
+/// would be the worst outcome here.
 class GuestIdentity {
-  GuestIdentity(this._storage);
+  GuestIdentity(this._store);
 
   static const String storageKey = 'guest_id';
 
-  final SecureStorageProvider _storage;
-  String? _cached;
+  final SecureIdentityStore _store;
+  GuestIdentityResult? _cached;
 
-  /// The stored id, or a newly generated one saved on first use.
-  Future<String> ensure() async {
-    final String? cached = _cached;
+  /// The current identity, restored or created.
+  ///
+  /// On a transient failure - a locked device - this rethrows rather than
+  /// minting a new id, because a new id would strand the existing history under
+  /// an identifier nobody holds. On a permanent failure it returns an ephemeral
+  /// identity and reports it, so the caller can tell the user.
+  Future<GuestIdentityResult> resolve() async {
+    final GuestIdentityResult? cached = _cached;
     if (cached != null) {
       return cached;
     }
-    final String? stored = await _storage.read(storageKey);
-    if (stored != null && stored.isNotEmpty) {
-      _cached = stored;
-      return stored;
+
+    String? stored;
+    try {
+      stored = await _store.read(storageKey);
+    } on SecureStorageException catch (error) {
+      if (error.isTransient) {
+        // Retrying can succeed; inventing an identity cannot be undone.
+        rethrow;
+      }
+      return _cached = GuestIdentityResult(
+        generateUuidV4(),
+        GuestIdentitySource.ephemeral,
+        failure: error,
+      );
     }
+
+    if (stored != null && stored.isNotEmpty) {
+      return _cached = GuestIdentityResult(stored, GuestIdentitySource.restored);
+    }
+
     final String created = generateUuidV4();
-    await _storage.write(storageKey, created);
-    _cached = created;
-    return created;
+    try {
+      await _store.write(storageKey, created);
+    } on SecureStorageException catch (error) {
+      return _cached = GuestIdentityResult(
+        created,
+        GuestIdentitySource.ephemeral,
+        failure: error,
+      );
+    }
+    return _cached = GuestIdentityResult(created, GuestIdentitySource.created);
   }
 
-  /// Forgets the local identifier. Used after the guest deletes their data, so
-  /// the next session starts a genuinely new guest rather than re-populating
-  /// the id they just erased.
-  Future<void> reset() async {
+  /// The identifier alone, for call sites that only need the header value.
+  Future<String> ensure() async => (await resolve()).id;
+
+  /// Rotates to a new identity after the guest deletes their data.
+  ///
+  /// The old value is removed first. If that fails, no new identity is minted:
+  /// leaving the old id in place is recoverable, whereas writing a new one over
+  /// a failed delete would leave the old data addressable by a value still on
+  /// the device.
+  Future<GuestIdentityResult> rotate() async {
+    await _store.delete(storageKey);
     _cached = null;
-    await _storage.clear();
+    return resolve();
   }
+
+  /// Forgets the cached value without touching storage. Tests only.
+  void forgetCache() => _cached = null;
 }
 
 final Random _random = Random.secure();

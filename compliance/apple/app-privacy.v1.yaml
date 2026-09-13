@@ -1,0 +1,154 @@
+# Apple App Store Connect — App Privacy answers.
+#
+# Derived from compliance/data-inventory.v1.yaml. CI
+# (scripts/check_compliance_consistency.py) fails if a category in the data
+# inventory has no answer here.
+#
+# "Tracking" has Apple's specific meaning: linking this app's data with data
+# from other companies' apps or websites for advertising or measurement, or
+# sharing it with a data broker. Nothing here does that, so every tracking
+# answer is false and the app requires no App Tracking Transparency prompt.
+schema_version: 1
+program: Program003
+as_of: "2026-09-12"
+
+tracking:
+  app_tracks_users: false
+  att_prompt_required: false
+  data_broker_sharing: false
+  rationale: >-
+    No advertising SDK, no attribution SDK, no third-party analytics, and no
+    identifier that could join this data to another company's.
+
+data_types:
+  - apple_category: Identifiers
+    apple_subtype: User ID
+    inventory_ref: v1.identity_guest.guest_id
+    collected: true
+    linked_to_identity: true
+    used_for_tracking: false
+    purposes: [App Functionality]
+    shared_with_third_parties: false
+    deletable: true
+    retention: until user deletion
+    note: >-
+      A random UUIDv4 generated on the device. Linked, because the user's own
+      history hangs off it. Not a device identifier: no IDFA, no IDFV, no
+      hardware or vendor fingerprint.
+
+  - apple_category: Identifiers
+    apple_subtype: Device ID
+    inventory_ref: null
+    collected: false
+    linked_to_identity: false
+    used_for_tracking: false
+    note: >-
+      Explicitly not collected. Recorded so the answer is a decision rather than
+      an omission.
+
+  - apple_category: User Content
+    apple_subtype: Other User Content
+    inventory_ref: v1.wellness.check_in
+    collected: true
+    linked_to_identity: true
+    used_for_tracking: false
+    purposes: [App Functionality, Analytics]
+    shared_with_third_parties: false
+    deletable: true
+    retention: until user deletion
+    note: >-
+      Self-reported goal, stress, energy, mental activity, sleepiness, available
+      time and experience level. Declared as User Content, not Health and
+      Fitness: nothing is read from HealthKit and no health entitlement exists.
+
+  - apple_category: User Content
+    apple_subtype: Other User Content
+    inventory_ref: v1.wellness.session_history
+    collected: true
+    linked_to_identity: true
+    used_for_tracking: false
+    purposes: [App Functionality, Analytics]
+    shared_with_third_parties: false
+    deletable: true
+    retention: until user deletion
+
+  - apple_category: User Content
+    apple_subtype: Other User Content
+    inventory_ref: v1.wellness.feedback
+    collected: true
+    linked_to_identity: true
+    used_for_tracking: false
+    purposes: [App Functionality, Analytics, Product Personalization]
+    shared_with_third_parties: false
+    deletable: true
+    retention: until user deletion
+    note: >-
+      Includes an optional free-text note, which is why this is User Content
+      rather than Usage Data.
+
+  - apple_category: Usage Data
+    apple_subtype: Product Interaction
+    inventory_ref: v1.wellness.outcome_evidence
+    collected: true
+    linked_to_identity: true
+    used_for_tracking: false
+    purposes: [Analytics]
+    shared_with_third_parties: false
+    deletable: true
+    retention: until user deletion
+    note: >-
+      Derived outcome measures and a product optimization score. Never shown to
+      the user and never used as a clinical or diagnostic signal.
+
+  - apple_category: Usage Data
+    apple_subtype: Product Interaction
+    inventory_ref: v1.wellness.experiment_assignment
+    collected: true
+    linked_to_identity: true
+    used_for_tracking: false
+    purposes: [Analytics, App Functionality]
+    shared_with_third_parties: false
+    deletable: true
+    retention: until user deletion
+
+  - apple_category: Diagnostics
+    apple_subtype: Crash Data
+    inventory_ref: null
+    collected: false
+    linked_to_identity: false
+    used_for_tracking: false
+    note: >-
+      No crash reporting SDK is integrated. Server-side operational logs contain
+      no guest identifier and no user content, and are not collected from the
+      device.
+
+  - apple_category: Health and Fitness
+    apple_subtype: Health
+    inventory_ref: null
+    collected: false
+    linked_to_identity: false
+    used_for_tracking: false
+    note: >-
+      Not collected and not declared. HealthKit is not enabled in V1; declaring
+      this category would be inaccurate and would invite an entitlement the app
+      does not have.
+
+  - apple_category: Contact Info
+    apple_subtype: Email Address
+    inventory_ref: null
+    collected: false
+    note: No accounts, no email, no contact collection in V1.
+
+  - apple_category: Location
+    apple_subtype: Precise Location
+    inventory_ref: null
+    collected: false
+    note: No location permission is requested.
+
+privacy_urls:
+  privacy_policy: BLOCKED_BRAND_IDENTITY
+  user_privacy_choices: BLOCKED_BRAND_IDENTITY
+  note: >-
+    Both routes are implemented and served by the backend at /privacy and
+    /privacy-choices. The public URLs cannot be finalized until the support
+    domain is chosen; see STORE_IDENTITY_GATE.

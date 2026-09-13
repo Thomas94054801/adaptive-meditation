@@ -27,6 +27,33 @@ class _RecommendationScreenState extends State<RecommendationScreen> {
   bool _busy = false;
   String? _error;
 
+  @override
+  void initState() {
+    super.initState();
+    // Report exposure once the explanation is actually on screen. Assignment
+    // happened server-side when the recommendation was requested; counting that
+    // as exposure would inflate every denominator the experiment is for.
+    WidgetsBinding.instance.addPostFrameCallback((_) => _reportExposure());
+  }
+
+  Future<void> _reportExposure() async {
+    final ExperimentVariant? variant = widget.recommendation.explanationVariant;
+    if (variant == null || !mounted) {
+      return;
+    }
+    try {
+      await AppScope.of(context).api.recordExposure(
+        experimentId: variant.experimentId,
+        // The check-in this explanation was shown for. Re-opening the screen
+        // for the same check-in is the same exposure, not a new one.
+        context: widget.receipt.id,
+      );
+    } on ApiException {
+      // An unrecorded exposure is a gap in analytics, not a broken session.
+      // It must never interrupt someone trying to meditate.
+    }
+  }
+
   Future<void> _start() async {
     setState(() {
       _busy = true;
@@ -62,9 +89,10 @@ class _RecommendationScreenState extends State<RecommendationScreen> {
   Widget build(BuildContext context) {
     final ThemeData theme = Theme.of(context);
     final Recommendation recommendation = widget.recommendation;
-    final String? explanation = explainRecommendation(
+    final String? explanation = explainRecommendationVariant(
       recommendation.practicePublicName,
       recommendation.reasonCodes,
+      variant: recommendation.explanationVariant?.variant ?? 'concise',
     );
 
     return Scaffold(

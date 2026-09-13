@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Release network policy: HTTPS only.
+
+  cleartextTrafficPermitted is false for every domain with no exceptions. The
+  debug build type overlays its own config permitting localhost, so a developer
+  can still point the app at a local backend without that permission ever
+  reaching a release artifact.
+-->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="false">
+        <trust-anchors>
+            <certificates src="system" />
+        </trust-anchors>
+    </base-config>
+</network-security-config>

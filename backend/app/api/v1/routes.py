@@ -6,16 +6,32 @@ import uuid
 
 from fastapi import APIRouter, HTTPException, Response, status
 
-from app.api.deps import CatalogDep, DbSessionDep, EngineDep, OptionalGuestDep
+from app.api.deps import (
+    CatalogDep,
+    DatabaseDep,
+    DbSessionDep,
+    EngineDep,
+    OptionalGuestDep,
+    RequiredGuestDep,
+)
 from app.api.v1.schemas import (
     CandidateListResponse,
     CandidateResponse,
     CheckInResponse,
     ErrorResponse,
+    ExperimentVariantResponse,
+    ExposureRequest,
+    ExposureResponse,
     RecommendationResponse,
     SessionCreateRequest,
     SessionFeedbackRequest,
     SessionResponse,
+)
+from app.domain.experiment.assignment import (
+    EXPLANATION_COPY_EXPERIMENT,
+    ExperimentError,
+    assign,
+    get_experiment,
 )
 from app.domain.outcome.models import SessionOutcome, StateSnapshot, compute_outcome
 from app.domain.recommendation.engine import Recommendation
@@ -31,6 +47,7 @@ from app.persistence.repositories import (
 router = APIRouter(prefix="/v1", tags=["v1"])
 
 ERROR_RESPONSES: dict[int | str, dict[str, object]] = {
+    401: {"model": ErrorResponse, "description": "Guest identity required"},
     404: {"model": ErrorResponse, "description": "Resource not found"},
     409: {"model": ErrorResponse, "description": "Conflicting state"},
     422: {"model": ErrorResponse, "description": "Validation error"},
@@ -38,11 +55,42 @@ ERROR_RESPONSES: dict[int | str, dict[str, object]] = {
 
 
 def _to_recommendation_response(
-    recommendation: Recommendation, catalog: CatalogDep
+    recommendation: Recommendation,
+    catalog: CatalogDep,
+    variant: ExperimentVariantResponse | None = None,
 ) -> RecommendationResponse:
     practice = catalog.practice(recommendation.practice_id)
     return RecommendationResponse(
-        **recommendation.model_dump(), practice_public_name=practice.public_name
+        **recommendation.model_dump(),
+        practice_public_name=practice.public_name,
+        explanation_variant=variant,
+    )
+
+
+def _explanation_variant(
+    guest_id: uuid.UUID | None, database: DatabaseDep
+) -> ExperimentVariantResponse | None:
+    """Assign this guest to an explanation-wording variant.
+
+    Presentation only. The recommendation has already been computed by the time
+    this runs, so an experiment cannot reach the practice decision even by
+    accident.
+
+    A caller with no guest identity gets no variant rather than a random one:
+    an assignment that cannot be recorded cannot be analysed either. That case
+    opens no database session at all, which is what keeps the recommendation
+    endpoint answerable with the database down.
+    """
+    if guest_id is None:
+        return None
+    experiment = get_experiment(EXPLANATION_COPY_EXPERIMENT)
+    assignment = assign(str(guest_id), experiment)
+    with database.session() as session:
+        # assignment() creates the guest row if this is its first assignment, so
+        # a repeat call is a single lookup.
+        GuestRepository(session).assignment(guest_id, assignment)
+    return ExperimentVariantResponse(
+        experiment_id=assignment.experiment_id, variant=assignment.variant
     )
 
 
@@ -77,10 +125,64 @@ def create_check_in(
     summary="Deterministic practice recommendation",
 )
 def create_recommendation(
-    payload: CheckIn, engine: EngineDep, catalog: CatalogDep
+    payload: CheckIn,
+    engine: EngineDep,
+    catalog: CatalogDep,
+    database: DatabaseDep,
+    guest_id: OptionalGuestDep,
 ) -> RecommendationResponse:
-    """Pure computation. Deliberately does not touch the database."""
-    return _to_recommendation_response(engine.recommend(payload), catalog)
+    """The recommendation itself is pure computation.
+
+    A session is opened only to record the presentation-experiment assignment,
+    and only when the caller sent a guest identity. Without one this endpoint
+    still touches no database at all, which is what keeps it answerable with the
+    database down.
+    """
+    recommendation = engine.recommend(payload)
+    return _to_recommendation_response(
+        recommendation, catalog, _explanation_variant(guest_id, database)
+    )
+
+
+@router.post(
+    "/experiments/exposures",
+    operation_id="recordExperimentExposure",
+    status_code=status.HTTP_200_OK,
+    response_model=ExposureResponse,
+    responses={k: ERROR_RESPONSES[k] for k in (401, 422)},
+    summary="Record that an experiment variant was actually shown",
+)
+def record_exposure(
+    payload: ExposureRequest, db: DbSessionDep, guest_id: RequiredGuestDep
+) -> ExposureResponse:
+    """Exposure, as distinct from assignment.
+
+    Idempotent per context, so re-opening the same screen does not double-count.
+    ``recorded`` says whether this call created the exposure or found one.
+    """
+    try:
+        experiment = get_experiment(payload.experiment_id)
+    except ExperimentError:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail={"code": "unknown_experiment", "message": "Unknown experiment_id."},
+        ) from None
+
+    assignment = assign(str(guest_id), experiment)
+    guests = GuestRepository(db)
+    guests.assignment(guest_id, assignment)
+    _, created = guests.record_exposure(
+        guest_id=guest_id,
+        experiment_id=assignment.experiment_id,
+        variant=assignment.variant,
+        context=payload.context,
+    )
+    return ExposureResponse(
+        experiment_id=assignment.experiment_id,
+        variant=assignment.variant,
+        context=payload.context,
+        recorded=created,
+    )
 
 
 @router.post(

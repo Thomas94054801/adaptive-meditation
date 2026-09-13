@@ -15,6 +15,7 @@ from sqlalchemy.orm import Session as OrmSession
 
 from app.domain.practice.catalog import KnowledgeCatalog
 from app.domain.recommendation.engine import RecommendationEngine
+from app.persistence.database import Database
 from app.settings import Settings
 
 
@@ -38,10 +39,23 @@ def get_db_session(request: Request) -> Iterator[OrmSession]:
         yield session
 
 
+def get_database(request: Request) -> Database:
+    """The database object, without opening a session.
+
+    For routes that only *sometimes* need one. Depending on ``get_db_session``
+    acquires a pooled connection on every request, which is pure cost on the
+    calls that never use it - it cost the recommendation endpoint 67% of its
+    p95 before this existed.
+    """
+    database: Database = request.app.state.database
+    return database
+
+
 SettingsDep = Annotated[Settings, Depends(get_settings)]
 EngineDep = Annotated[RecommendationEngine, Depends(get_engine)]
 CatalogDep = Annotated[KnowledgeCatalog, Depends(get_catalog)]
 DbSessionDep = Annotated[OrmSession, Depends(get_db_session)]
+DatabaseDep = Annotated[Database, Depends(get_database)]
 
 
 GUEST_HEADER = "X-Guest-Id"

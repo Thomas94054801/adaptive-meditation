@@ -1,0 +1,142 @@
+# Google Play Console — Data Safety answers.
+#
+# Derived from compliance/data-inventory.v1.yaml. CI
+# (scripts/check_compliance_consistency.py) fails if a category in the data
+# inventory has no mapping here.
+schema_version: 1
+program: Program003
+as_of: "2026-09-12"
+
+summary:
+  data_collected: true
+  data_shared: false
+  encrypted_in_transit: true
+  user_can_request_deletion: true
+  deletion_mechanism: in-app, immediate
+  independent_security_review: false
+  # Play asks this directly. The honest answer is no; claiming otherwise would
+  # be a false declaration about something a reviewer can ask us to evidence.
+  committed_to_play_families_policy: false
+
+data_types:
+  - play_category: Personal info
+    play_type: User IDs
+    inventory_ref: v1.identity_guest.guest_id
+    collected: true
+    shared: false
+    ephemeral: false
+    required: true
+    optional: false
+    purposes: [App functionality]
+    encrypted_in_transit: true
+    deletion_supported: true
+    note: >-
+      A random UUIDv4 generated on device. Required because it is the only way a
+      user's own history and their deletion request can be located.
+
+  - play_category: App activity
+    play_type: Other user-generated content
+    inventory_ref: v1.wellness.check_in
+    collected: true
+    shared: false
+    ephemeral: false
+    required: true
+    optional: false
+    purposes: [App functionality, Analytics]
+    encrypted_in_transit: true
+    deletion_supported: true
+
+  - play_category: App activity
+    play_type: App interactions
+    inventory_ref: v1.wellness.session_history
+    collected: true
+    shared: false
+    ephemeral: false
+    required: true
+    optional: false
+    purposes: [App functionality, Analytics]
+    encrypted_in_transit: true
+    deletion_supported: true
+
+  - play_category: App activity
+    play_type: Other user-generated content
+    inventory_ref: v1.wellness.feedback
+    collected: true
+    shared: false
+    ephemeral: false
+    required: false
+    optional: true
+    purposes: [App functionality, Analytics, Personalization]
+    encrypted_in_transit: true
+    deletion_supported: true
+    note: Optional. A session can be completed without giving feedback.
+
+  - play_category: App activity
+    play_type: App interactions
+    inventory_ref: v1.wellness.outcome_evidence
+    collected: true
+    shared: false
+    ephemeral: false
+    required: false
+    optional: true
+    purposes: [Analytics]
+    encrypted_in_transit: true
+    deletion_supported: true
+
+  - play_category: App activity
+    play_type: App interactions
+    inventory_ref: v1.wellness.experiment_assignment
+    collected: true
+    shared: false
+    ephemeral: false
+    required: true
+    optional: false
+    purposes: [App functionality, Analytics]
+    encrypted_in_transit: true
+    deletion_supported: true
+
+not_collected:
+  # Play requires a positive answer for each category. These are declared absent
+  # explicitly rather than left blank.
+  - play_category: Personal info
+    play_type: Name
+  - play_category: Personal info
+    play_type: Email address
+  - play_category: Personal info
+    play_type: Address
+  - play_category: Personal info
+    play_type: Phone number
+  - play_category: Financial info
+    play_type: any
+  - play_category: Health and fitness
+    play_type: Health info
+    note: >-
+      Health Connect is not integrated and nothing is read from the device.
+      Self-reported check-in values are declared as user-generated content.
+  - play_category: Location
+    play_type: any
+  - play_category: Photos and videos
+    play_type: any
+  - play_category: Audio
+    play_type: any
+  - play_category: Contacts
+    play_type: any
+  - play_category: Device or other IDs
+    play_type: Device or other IDs
+    note: >-
+      No advertising ID, no GAID, no hardware identifier. The guest identifier is
+      app-generated and declared under Personal info / User IDs instead.
+  - play_category: App info and performance
+    play_type: Crash logs
+    note: No crash reporting SDK is integrated.
+
+account_deletion:
+  account_creation_offered: false
+  account_deletion_requirement: not yet applicable
+  guest_data_deletion: implemented
+  in_app_path: "Your sessions → Delete my meditation data"
+  web_path: /privacy-choices
+  note: >-
+    Play's account-deletion requirement applies to apps that let users create an
+    account. This app does not. Guest data deletion is implemented anyway,
+    because the data exists regardless of whether an account does.

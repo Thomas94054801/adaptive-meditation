@@ -113,10 +113,15 @@ class _SessionScreenState extends State<SessionScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: <Widget>[
-              LinearProgressIndicator(
-                key: const Key('session_progress'),
-                value: _timeline.progressAt(_elapsedSeconds),
-                minHeight: 6,
+              Semantics(
+                label:
+                    'Session progress, '
+                    '${(_timeline.progressAt(_elapsedSeconds) * 100).round()} percent',
+                child: LinearProgressIndicator(
+                  key: const Key('session_progress'),
+                  value: _timeline.progressAt(_elapsedSeconds),
+                  minHeight: 6,
+                ),
               ),
               const SizedBox(height: 12),
               Row(
@@ -130,6 +135,9 @@ class _SessionScreenState extends State<SessionScreen> {
                   Text(
                     formatClock(frame.secondsRemaining),
                     key: const Key('session_remaining'),
+                    semanticsLabel:
+                        '${frame.secondsRemaining ~/ 60} minutes '
+                        '${frame.secondsRemaining % 60} seconds remaining',
                     style: theme.textTheme.labelLarge,
                   ),
                 ],
@@ -141,6 +149,11 @@ class _SessionScreenState extends State<SessionScreen> {
                     child: Text(
                       frame.isSilence ? 'Stay with it.' : frame.stage.prompt,
                       key: const Key('session_prompt'),
+                      // Read out when it changes, so a screen-reader user is
+                      // guided rather than having to re-explore the screen.
+                      semanticsLabel: frame.isSilence
+                          ? 'Stay with it.'
+                          : frame.stage.prompt,
                       textAlign: TextAlign.center,
                       style: theme.textTheme.headlineSmall?.copyWith(
                         height: 1.4,
@@ -153,18 +166,26 @@ class _SessionScreenState extends State<SessionScreen> {
               Row(
                 children: <Widget>[
                   Expanded(
-                    child: OutlinedButton(
-                      key: const Key('session_pause_resume'),
-                      onPressed: _running ? _pause : _resume,
-                      child: Text(_running ? 'Pause' : 'Resume'),
+                    child: Semantics(
+                      button: true,
+                      label: _running ? 'Pause the session' : 'Resume the session',
+                      child: OutlinedButton(
+                        key: const Key('session_pause_resume'),
+                        onPressed: _running ? _pause : _resume,
+                        child: Text(_running ? 'Pause' : 'Resume'),
+                      ),
                     ),
                   ),
                   const SizedBox(width: 12),
                   Expanded(
-                    child: FilledButton(
-                      key: const Key('session_end'),
-                      onPressed: () => _finish(completed: false),
-                      child: const Text('End session'),
+                    child: Semantics(
+                      button: true,
+                      label: 'End the session now and go to feedback',
+                      child: FilledButton(
+                        key: const Key('session_end'),
+                        onPressed: () => _finish(completed: false),
+                        child: const Text('End session'),
+                      ),
                     ),
                   ),
                 ],
