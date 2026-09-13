@@ -4,6 +4,12 @@
 /// renders what the deterministic engine returns.
 library;
 
+import 'timeline.dart';
+
+// Re-exported so a screen holding a session can name its typed plan without
+// knowing which file it lives in.
+export 'timeline.dart';
+
 /// A user job. Values match the API enum exactly.
 enum Goal {
   stress('stress', 'Calm stress'),
@@ -238,6 +244,8 @@ class MeditationSession {
     required this.status,
     required this.recommendation,
     required this.plan,
+    this.planV2,
+    this.runState = 'created',
   });
 
   factory MeditationSession.fromJson(Map<String, dynamic> json) =>
@@ -249,6 +257,12 @@ class MeditationSession {
           json['recommendation'] as Map<String, dynamic>,
         ),
         plan: SessionPlan.fromJson(json['plan'] as Map<String, dynamic>),
+        // Absent on sessions created before typed plans existed. Those still
+        // play, on the stage timeline, which is why the v1 plan stays required.
+        planV2: json['plan_v2'] == null
+            ? null
+            : SessionPlanV2.fromJson(json['plan_v2'] as Map<String, dynamic>),
+        runState: json['run_state'] as String? ?? 'created',
       );
 
   final String id;
@@ -256,6 +270,124 @@ class MeditationSession {
   final String status;
   final Recommendation recommendation;
   final SessionPlan plan;
+
+  /// The typed timeline, when the backend produced one.
+  final SessionPlanV2? planV2;
+
+  final String runState;
+
+  bool get hasTypedPlan => planV2 != null;
+}
+
+/// One resolved audio file for a segment.
+class RenderManifestEntry {
+  const RenderManifestEntry({
+    required this.segmentId,
+    required this.renderKey,
+    required this.durationMs,
+    required this.contentSha256,
+    required this.uri,
+  });
+
+  factory RenderManifestEntry.fromJson(Map<String, dynamic> json) =>
+      RenderManifestEntry(
+        segmentId: json['segment_id'] as String,
+        renderKey: json['render_key'] as String,
+        durationMs: json['duration_ms'] as int,
+        contentSha256: json['content_sha256'] as String,
+        uri: json['uri'] as String,
+      );
+
+  final String segmentId;
+  final String renderKey;
+  final int durationMs;
+
+  /// Verified before playing. A mismatch is deleted and re-fetched, never
+  /// played: a corrupt file becoming a sound in the middle of a meditation is
+  /// the worst possible time to find out.
+  final String contentSha256;
+
+  final String uri;
+}
+
+/// What a session needs before it is ready to play.
+class RenderManifest {
+  const RenderManifest({
+    required this.sessionId,
+    required this.planHash,
+    required this.providerId,
+    required this.entries,
+    required this.unresolved,
+    required this.complete,
+  });
+
+  factory RenderManifest.fromJson(Map<String, dynamic> json) => RenderManifest(
+    sessionId: json['session_id'] as String,
+    planHash: json['plan_hash'] as String,
+    providerId: json['provider_id'] as String,
+    entries: (json['entries'] as List<dynamic>)
+        .map(
+          (dynamic e) =>
+              RenderManifestEntry.fromJson(e as Map<String, dynamic>),
+        )
+        .toList(growable: false),
+    unresolved: (json['unresolved'] as List<dynamic>).cast<String>(),
+    complete: json['complete'] as bool,
+  );
+
+  final String sessionId;
+  final String planHash;
+  final String providerId;
+  final List<RenderManifestEntry> entries;
+
+  /// Segments the backend could not resolve. Spoken with device-native TTS, or
+  /// shown as text. Not an error: with device TTS shipped first, every segment
+  /// arriving unresolved is the normal case.
+  final List<String> unresolved;
+
+  final bool complete;
+}
+
+/// The backend's view of a run. Authoritative after a reconnect or a relaunch,
+/// because it is the thing that survived the process dying.
+class PlaybackState {
+  const PlaybackState({
+    required this.sessionId,
+    required this.runState,
+    required this.elapsedMs,
+    required this.commandSequence,
+    required this.applied,
+    this.lastSegmentId,
+    this.resumeSegmentId,
+    this.resumeOffsetMs = 0,
+  });
+
+  factory PlaybackState.fromJson(Map<String, dynamic> json) => PlaybackState(
+    sessionId: json['session_id'] as String,
+    runState: json['run_state'] as String,
+    elapsedMs: json['elapsed_ms'] as int,
+    commandSequence: json['command_sequence'] as int,
+    applied: json['applied'] as bool,
+    lastSegmentId: json['last_segment_id'] as String?,
+    resumeSegmentId: json['resume_segment_id'] as String?,
+    resumeOffsetMs: json['resume_offset_ms'] as int? ?? 0,
+  );
+
+  final String sessionId;
+  final String runState;
+  final int elapsedMs;
+  final int commandSequence;
+
+  /// False when the command was a replay or arrived out of order. Not an error.
+  final bool applied;
+
+  final String? lastSegmentId;
+
+  /// Where to restart. Never mid-utterance.
+  final String? resumeSegmentId;
+  final int resumeOffsetMs;
+
+  bool get canResume => resumeSegmentId != null || elapsedMs > 0;
 }
 
 class SessionFeedback {
@@ -295,7 +427,8 @@ class SessionFeedback {
     if (notes != null && notes!.isNotEmpty) 'notes': notes,
     if (stressAfter != null) 'stress_after': stressAfter,
     if (energyAfter != null) 'energy_after': energyAfter,
-    if (mentalActivityAfter != null) 'mental_activity_after': mentalActivityAfter,
+    if (mentalActivityAfter != null)
+      'mental_activity_after': mentalActivityAfter,
     if (sleepinessAfter != null) 'sleepiness_after': sleepinessAfter,
     if (completionRatio != null) 'completion_ratio': completionRatio,
   };

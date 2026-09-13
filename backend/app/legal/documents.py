@@ -33,6 +33,10 @@ changes, this page will be updated before the change takes effect.</p>
       it ran, and whether you finished it.</li>
   <li><strong>Your feedback.</strong> How you rated the session afterwards, the
       after-session numbers you report, and an optional free-text note.</li>
+  <li><strong>What happened during a session.</strong> Which part you reached,
+      when you paused, whether something interrupted it, and whether you
+      finished. This is how a session you were interrupted during can be picked
+      up where you left it.</li>
   <li><strong>A pseudonymous identifier.</strong> A random value generated on
       your device the first time you use the app.</li>
 </ul>
@@ -51,6 +55,28 @@ deleted without asking you to create an account.</p>
 microphone access. No contacts. No advertising identifier. No health data from
 Apple Health or Health Connect - those integrations do not exist in this
 version.</p>
+<p>Nothing you say or do out loud is recorded. The app speaks; it never
+listens.</p>
+
+<h2>Spoken guidance</h2>
+<p>Sessions are spoken by your own device, using the text-to-speech voice built
+into it. The words are written by us and are the same for everyone. No
+identifier, no session, no history and nothing you have typed is ever sent to a
+speech service - the request is the sentence and the voice to read it with.</p>
+<p>One thing worth saying plainly, because we cannot see it and will not pretend
+otherwise: <strong>on Android, the system's own text-to-speech engine may
+perform synthesis over the network</strong>, depending on the engine and voice
+you have configured. That happens inside Android, outside this app, and the app
+has no way to observe it. Your device's text-to-speech settings control it.</p>
+
+<h2>Playing in the background</h2>
+<p>A session keeps playing when you lock your phone or switch apps, because a
+meditation you have to watch a screen for is not much of a meditation. That
+permission does one thing - it lets the audio continue - and it collects
+nothing.</p>
+<p>If your headphones disconnect mid-session, playback pauses instead of
+switching to the speaker. That is deliberate: what you are listening to is
+nobody else's business.</p>
 
 <h2>Why it is collected</h2>
 <p>To choose a practice that fits the state you reported, to show you your own

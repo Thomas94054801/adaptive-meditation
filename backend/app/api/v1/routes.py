@@ -6,6 +6,7 @@ import uuid
 
 from fastapi import APIRouter, HTTPException, Response, status
 
+from app.adapters.audio.registry import build_renderer
 from app.api.deps import (
     CatalogDep,
     DatabaseDep,
@@ -13,6 +14,7 @@ from app.api.deps import (
     EngineDep,
     OptionalGuestDep,
     RequiredGuestDep,
+    SettingsDep,
 )
 from app.api.v1.schemas import (
     CandidateListResponse,
@@ -22,11 +24,19 @@ from app.api.v1.schemas import (
     ExperimentVariantResponse,
     ExposureRequest,
     ExposureResponse,
+    PlaybackCommandRequest,
+    PlaybackStateResponse,
     RecommendationResponse,
+    RenderManifestEntryResponse,
+    RenderManifestResponse,
     SessionCreateRequest,
+    SessionEventBatchRequest,
+    SessionEventBatchResponse,
     SessionFeedbackRequest,
     SessionResponse,
 )
+from app.domain.audio.coordinator import build_manifest
+from app.domain.audio.render import RenderResult
 from app.domain.experiment.assignment import (
     EXPLANATION_COPY_EXPERIMENT,
     ExperimentError,
@@ -34,13 +44,31 @@ from app.domain.experiment.assignment import (
     get_experiment,
 )
 from app.domain.outcome.models import SessionOutcome, StateSnapshot, compute_outcome
+from app.domain.playback.state_machine import InvalidTransition
 from app.domain.recommendation.engine import Recommendation
 from app.domain.session.service import build_plan
 from app.domain.state.models import CheckIn, StateVector
+from app.domain.timeline.planner_v2 import (
+    PLAN_TIME_STYLE as DEFAULT_STYLE,
+)
+from app.domain.timeline.planner_v2 import (
+    PLAN_TIME_VOICE as DEFAULT_VOICE_ID,
+)
+from app.domain.timeline.planner_v2 import SessionPlanV2
+from app.domain.timeline.service import (
+    apply_command,
+    plan_response_payload,
+    plan_session,
+    recovery_point,
+)
 from app.persistence import models
 from app.persistence.repositories import (
+    AudioRenderRepository,
     CheckInRepository,
+    EventDraft,
     GuestRepository,
+    SessionDefinitionRepository,
+    SessionEventRepository,
     SessionRepository,
 )
 
@@ -225,6 +253,12 @@ def create_session(
 
     state = StateVector.from_check_in(CheckInRepository.to_domain(check_in_row))
     plan = build_plan(catalog, recommendation, state=state)
+
+    # Freeze the content before planning against it, so the session keeps
+    # describing the words it actually used after the knowledge files move on.
+    planned = plan_session(catalog, recommendation, state)
+    SessionDefinitionRepository(db).ensure(planned.definition)
+
     if guest_id is not None:
         GuestRepository(db).touch(guest_id)
     row = SessionRepository(db).create(
@@ -233,6 +267,9 @@ def create_session(
         plan=plan,
         guest_id=guest_id or check_in_row.guest_id,
         outcome=engine.evaluate(state),
+        plan_v2=plan_response_payload(planned.plan),
+        plan_hash=planned.plan.plan_hash,
+        definition_id=planned.definition.definition_id,
     )
     return SessionResponse(
         id=row.id,
@@ -243,6 +280,8 @@ def create_session(
         completed_at=row.completed_at,
         recommendation=_to_recommendation_response(recommendation, catalog),
         plan=plan.as_dict(),  # type: ignore[arg-type]
+        plan_v2=plan_response_payload(planned.plan),  # type: ignore[arg-type]
+        run_state=row.run_state,
     )
 
 
@@ -370,3 +409,281 @@ def create_recommendation_candidates(payload: CheckIn, engine: EngineDep) -> Can
             {"practice_id": e.practice_id.value, "reason": e.reason} for e in outcome.exclusions
         ],
     )
+
+
+@router.get(
+    "/sessions/{session_id}",
+    operation_id="getSession",
+    response_model=SessionResponse,
+    responses={k: ERROR_RESPONSES[k] for k in (401, 404)},
+    summary="Read a session, including its recovery point",
+)
+def get_session(
+    session_id: uuid.UUID, db: DbSessionDep, catalog: CatalogDep, guest_id: RequiredGuestDep
+) -> SessionResponse:
+    row = _owned_session(session_id, guest_id, db)
+    recommendation = Recommendation.from_stored(dict(row.recommendation))
+    return SessionResponse(
+        id=row.id,
+        check_in_id=row.check_in_id,
+        status=row.status,  # type: ignore[arg-type]
+        created_at=row.created_at,
+        started_at=row.started_at,
+        completed_at=row.completed_at,
+        recommendation=_to_recommendation_response(recommendation, catalog),
+        plan=dict(row.plan),  # type: ignore[arg-type]
+        plan_v2=dict(row.plan_v2) if row.plan_v2 else None,  # type: ignore[arg-type]
+        run_state=row.run_state,
+    )
+
+
+@router.post(
+    "/sessions/{session_id}/playback",
+    operation_id="applyPlaybackCommand",
+    response_model=PlaybackStateResponse,
+    responses={k: ERROR_RESPONSES[k] for k in (401, 404, 409, 422)},
+    summary="Apply a playback command",
+)
+def apply_playback_command(
+    session_id: uuid.UUID,
+    payload: PlaybackCommandRequest,
+    db: DbSessionDep,
+    guest_id: RequiredGuestDep,
+) -> PlaybackStateResponse:
+    """Drive the run state machine.
+
+    A replayed sequence, an out-of-order sequence and a command on a finished
+    run all return the current state with ``applied=false``. Two things are a
+    409: an illegal transition - starting a session that was never prepared -
+    and a sequence the journal already holds.
+    """
+    row = _owned_session(session_id, guest_id, db)
+    events = SessionEventRepository(db)
+    if events.command_already_applied(row.id, payload.command_id):
+        # SDD 5.4: a replayed command_id returns the same result without
+        # re-applying it. The sequence rule below catches an identical retry;
+        # this catches the same command retried under a fresh sequence.
+        return _playback_state(row, applied=False)
+
+    try:
+        outcome = apply_command(
+            current_state=row.run_state,
+            current_sequence=row.command_sequence,
+            current_elapsed_ms=row.elapsed_ms,
+            current_segment_id=row.last_segment_id,
+            command=payload.command,
+            sequence=payload.sequence,
+            elapsed_ms=payload.elapsed_ms,
+            segment_id=payload.segment_id,
+        )
+    except InvalidTransition as error:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={"code": "invalid_transition", "message": str(error)},
+        ) from None
+
+    if outcome.applied:
+        sessions = SessionRepository(db)
+        row.run_state = outcome.state.value
+        row.elapsed_ms = outcome.elapsed_ms
+        row.last_segment_id = outcome.last_segment_id
+        row.command_sequence = outcome.sequence
+        # Keep the Program001 status column in step, so history and outcome
+        # reporting keep working without knowing about run states.
+        if outcome.state.value == "playing" and row.started_at is None:
+            sessions.mark_started(row)
+        elif outcome.state.value == "completed":
+            sessions.finish(row, completed=True)
+        elif outcome.state.value == "abandoned":
+            sessions.finish(row, completed=False)
+
+        _, created = events.append(
+            session_id=row.id,
+            sequence=payload.sequence,
+            event_type=_EVENT_FOR_COMMAND[payload.command],
+            segment_id=payload.segment_id,
+            elapsed_ms=outcome.elapsed_ms,
+            command_id=payload.command_id,
+        )
+        if not created:
+            # Commands and events share one per-session counter. A command that
+            # lands on a sequence already holding something else means the
+            # client's counter is broken, and applying the state change while
+            # losing its journal entry would leave a run nobody can reconstruct.
+            # Raising rolls the whole request back.
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail={
+                    "code": "sequence_conflict",
+                    "message": f"sequence {payload.sequence} is already recorded.",
+                },
+            )
+
+    return _playback_state(row, applied=outcome.applied)
+
+
+@router.post(
+    "/sessions/{session_id}/prepare",
+    operation_id="prepareSession",
+    response_model=RenderManifestResponse,
+    responses={k: ERROR_RESPONSES[k] for k in (401, 404, 409)},
+    summary="Resolve the audio a session needs",
+)
+def prepare_session(
+    session_id: uuid.UUID,
+    db: DbSessionDep,
+    guest_id: RequiredGuestDep,
+    settings: SettingsDep,
+) -> RenderManifestResponse:
+    """Build the render manifest for a session's speech segments.
+
+    Cache first, renderer only on a miss, which is what makes synthesis a
+    one-off cost rather than a per-session one. With no server-side renderer
+    configured - the shipping default - every segment comes back unresolved and
+    the client speaks them with device-native TTS.
+    """
+    row = _owned_session(session_id, guest_id, db)
+    if not row.plan_v2:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={
+                "code": "no_typed_plan",
+                "message": "This session predates typed plans and cannot be prepared.",
+            },
+        )
+
+    plan = SessionPlanV2.from_dict(dict(row.plan_v2))
+    renders = AudioRenderRepository(db)
+    renderer = build_renderer(settings.speech_provider, app_env=settings.app_env)
+    manifest = build_manifest(plan, renderer, renders.get)
+
+    for entry in manifest.entries:
+        if not entry.from_cache:
+            renders.record(
+                RenderResult(
+                    render_key=entry.render_key,
+                    duration_ms=entry.duration_ms,
+                    content_sha256=entry.content_sha256,
+                    uri=entry.uri,
+                    provider_id=renderer.provider_id,
+                    provider_version=renderer.provider_version,
+                    byte_size=0,
+                ),
+                locale=plan.locale,
+                voice_id=DEFAULT_VOICE_ID,
+                style=DEFAULT_STYLE,
+            )
+
+    return RenderManifestResponse(
+        session_id=row.id,
+        plan_hash=plan.plan_hash,
+        provider_id=renderer.provider_id,
+        locale=plan.locale,
+        entries=[
+            RenderManifestEntryResponse(**entry.as_dict())  # type: ignore[arg-type]
+            for entry in manifest.entries
+        ],
+        unresolved=list(manifest.unresolved),
+        complete=manifest.complete,
+    )
+
+
+@router.get(
+    "/sessions/{session_id}/playback",
+    operation_id="getPlaybackState",
+    response_model=PlaybackStateResponse,
+    responses={k: ERROR_RESPONSES[k] for k in (401, 404)},
+    summary="Read playback state and the recovery point",
+)
+def get_playback_state(
+    session_id: uuid.UUID, db: DbSessionDep, guest_id: RequiredGuestDep
+) -> PlaybackStateResponse:
+    """What a client asks for after being killed in the background."""
+    return _playback_state(_owned_session(session_id, guest_id, db), applied=False)
+
+
+@router.post(
+    "/sessions/{session_id}/events",
+    operation_id="appendSessionEvents",
+    response_model=SessionEventBatchResponse,
+    responses={k: ERROR_RESPONSES[k] for k in (401, 404, 422)},
+    summary="Append playback events",
+)
+def append_session_events(
+    session_id: uuid.UUID,
+    payload: SessionEventBatchRequest,
+    db: DbSessionDep,
+    guest_id: RequiredGuestDep,
+) -> SessionEventBatchResponse:
+    """Batched so a session does not make a round trip per segment.
+
+    Idempotent per (session, sequence): a client that retries after losing its
+    connection re-sends the batch and gets the same journal, not a doubled one.
+    """
+    row = _owned_session(session_id, guest_id, db)
+    accepted, duplicates = SessionEventRepository(db).append_many(
+        row.id,
+        [
+            EventDraft(
+                sequence=event.sequence,
+                event_type=event.event_type,
+                segment_id=event.segment_id,
+                elapsed_ms=event.elapsed_ms,
+                command_id=event.command_id,
+                detail=event.detail,
+            )
+            for event in payload.events
+        ],
+    )
+    return SessionEventBatchResponse(accepted=accepted, duplicates=duplicates)
+
+
+_EVENT_FOR_COMMAND = {
+    "prepare": "session_created",
+    "resolved": "session_prepared",
+    "unresolvable": "render_failure",
+    "start": "session_started",
+    "pause": "playback_paused",
+    "resume": "playback_resumed",
+    "interrupt": "playback_interrupted",
+    # An interruption ending is its own fact, not a second pause: the run stays
+    # paused, and conflating the two would make the journal unable to say why.
+    "interruption_ended": "playback_focus_regained",
+    "complete": "session_completed",
+    "abandon": "session_abandoned",
+    "fail": "playback_failed",
+    "recover": "session_prepared",
+}
+
+
+def _playback_state(row: models.Session, *, applied: bool) -> PlaybackStateResponse:
+    segment_id, offset_ms = (None, 0)
+    if row.plan_v2:
+        segment_id, offset_ms = recovery_point(
+            SessionPlanV2.from_dict(dict(row.plan_v2)), row.last_segment_id
+        )
+    return PlaybackStateResponse(
+        session_id=row.id,
+        run_state=row.run_state or "created",
+        elapsed_ms=row.elapsed_ms,
+        last_segment_id=row.last_segment_id,
+        command_sequence=row.command_sequence,
+        applied=applied,
+        resume_segment_id=segment_id,
+        resume_offset_ms=offset_ms,
+    )
+
+
+def _owned_session(session_id: uuid.UUID, guest_id: uuid.UUID, db: DbSessionDep) -> models.Session:
+    """Fetch a session the caller owns.
+
+    A session belonging to another guest is reported as not found rather than
+    forbidden: confirming it exists would leak that it does.
+    """
+    row = SessionRepository(db).get(session_id)
+    if row is None or row.guest_id != guest_id:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={"code": "session_not_found", "message": "Unknown session_id."},
+        )
+    return row

@@ -67,6 +67,38 @@ v1:
       deterministic: true
       deletable: true
       advertising_use: false
+    playback_journal:
+      collected: true
+      fields: [sequence, event_type, segment_id, elapsed_ms, command_id, occurred_at]
+      purpose: [session_resume, playback_diagnostics, outcome_measurement]
+      deletable: true
+      advertising_use: false
+      append_only: true
+      notes: >-
+        What happened during a session: which segment was reached, when it was
+        paused, whether it was interrupted. elapsed_ms is playback position, not
+        wall-clock duration. No spoken text and no transcript is stored in the
+        journal - the words live in the frozen session definition, which is not
+        guest-linked. Append-only against rewriting, which does not affect
+        deletion: the rows go with the guest cascade like everything else.
+    session_definition:
+      collected: false
+      shared_across_guests: true
+      notes: >-
+        The frozen guidance text a session used, addressed by the hash of its
+        own content. Product-authored and identical for every user, so it is not
+        personal data and is deliberately not guest-linked. It survives guest
+        deletion because there is nothing personal in it to delete, and because
+        deleting it would break the reproducibility of sessions other people
+        still hold.
+    audio_render:
+      collected: false
+      shared_across_guests: true
+      notes: >-
+        Measured audio for one utterance, keyed by the hash of its render
+        inputs. Records which content was rendered, never who heard it: the
+        table has no guest column. Not cleared by guest deletion, for the same
+        reason as the session definition.
   health:
     healthkit:
       collected: false
@@ -82,8 +114,31 @@ v1:
       permission_required: false
     microphone:
       permission_required: false
+      notes: >-
+        Program004 plays audio; it never captures any. Text-to-speech is output
+        only and requires no microphone permission on either platform.
     location:
       permission_required: false
+  audio:
+    background_playback:
+      permission_required: true
+      data_collected: false
+      notes: >-
+        Guidance continues while the screen is off. iOS UIBackgroundModes=audio;
+        Android media-playback foreground service. Declared because the code
+        creates the fact, and it collects nothing.
+    text_to_speech:
+      provider: device-native
+      cloud_subprocessor: false
+      user_data_in_request: false
+      notes: >-
+        Synthesis requests carry product-authored text and a voice identity and
+        nothing else. No guest id, session id, experiment arm, device id,
+        history or free text ever reaches a renderer, and that is enforced by a
+        check over the serialised request rather than by review. On Android the
+        system TTS engine may itself synthesise over the network, outside the
+        app's control and unobservable to it; that is an OS-level behaviour and
+        is disclosed as one.
   ai:
     user_text_to_generation:
       enabled: planned

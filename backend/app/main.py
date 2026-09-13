@@ -56,8 +56,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.database = Database(settings)
 
     app.include_router(system_router)
-    app.include_router(v1_router)
+    # Order matters: guest_router owns the literal /v1/sessions/history, and
+    # v1_router owns /v1/sessions/{session_id}. FastAPI matches in registration
+    # order, so the literal path must be registered first or "history" is read
+    # as a session id. test_literal_session_paths_are_not_shadowed pins this.
     app.include_router(guest_router)
+    app.include_router(v1_router)
 
     @app.exception_handler(RequestValidationError)
     async def _validation_handler(request: Request, exc: RequestValidationError) -> JSONResponse:

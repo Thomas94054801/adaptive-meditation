@@ -47,6 +47,31 @@ abstract interface class MeditationApi {
     required String context,
   });
 
+  /// Resolves the audio a session needs. With device-native TTS as the shipped
+  /// provider the manifest comes back empty, and that is the normal case.
+  Future<RenderManifest> prepareSession(String sessionId);
+
+  /// Applies one playback command. Idempotent on [commandId]: retrying after a
+  /// dropped response returns the current state rather than acting twice.
+  Future<PlaybackState> applyPlaybackCommand({
+    required String sessionId,
+    required String command,
+    required String commandId,
+    required int sequence,
+    required int elapsedMs,
+    String? segmentId,
+  });
+
+  /// Reads the run state, including where to resume after the process died.
+  Future<PlaybackState> playbackState(String sessionId);
+
+  /// Appends playback events. Batched so a session does not make a round trip
+  /// per segment, and idempotent per sequence so a retry is free.
+  Future<void> appendEvents(
+    String sessionId,
+    List<Map<String, dynamic>> events,
+  );
+
   /// The single wellness disclaimer surface, served so the wording lives in
   /// one place rather than being duplicated in the client.
   Future<WellnessDisclaimer> disclaimer();
@@ -102,20 +127,80 @@ class HttpMeditationApi implements MeditationApi {
   Future<MeditationSession> createSession(String checkInId) async {
     // The recommendation is intentionally not sent: the server re-derives it,
     // and that is the only authority over which practice runs.
-    final Map<String, dynamic> body = await _postJson('/v1/sessions', <
-      String,
-      dynamic
-    >{'check_in_id': checkInId}, expected: 201);
+    final Map<String, dynamic> body = await _postJson(
+      '/v1/sessions',
+      <String, dynamic>{'check_in_id': checkInId},
+      expected: 201,
+    );
     return MeditationSession.fromJson(body);
   }
 
   @override
-  Future<void> startSession(String sessionId) =>
-      _postNoContent('/v1/sessions/$sessionId/start', const <String, dynamic>{});
+  Future<void> startSession(String sessionId) => _postNoContent(
+    '/v1/sessions/$sessionId/start',
+    const <String, dynamic>{},
+  );
 
   @override
   Future<void> submitFeedback(String sessionId, SessionFeedback feedback) =>
       _postNoContent('/v1/sessions/$sessionId/feedback', feedback.toJson());
+
+  @override
+  Future<RenderManifest> prepareSession(String sessionId) async {
+    final Map<String, dynamic> body = await _postJson(
+      '/v1/sessions/$sessionId/prepare',
+      const <String, dynamic>{},
+      expected: 200,
+    );
+    return RenderManifest.fromJson(body);
+  }
+
+  @override
+  Future<PlaybackState> applyPlaybackCommand({
+    required String sessionId,
+    required String command,
+    required String commandId,
+    required int sequence,
+    required int elapsedMs,
+    String? segmentId,
+  }) async {
+    final Map<String, dynamic> body =
+        await _postJson('/v1/sessions/$sessionId/playback', <String, dynamic>{
+          'command': command,
+          'command_id': commandId,
+          'sequence': sequence,
+          'elapsed_ms': elapsedMs,
+          'segment_id': ?segmentId,
+        }, expected: 200);
+    return PlaybackState.fromJson(body);
+  }
+
+  @override
+  Future<PlaybackState> playbackState(String sessionId) async {
+    final http.Response response = await _send(
+      '/v1/sessions/$sessionId/playback',
+      method: 'GET',
+    );
+    if (response.statusCode != 200) {
+      throw ApiException(_describe(response), statusCode: response.statusCode);
+    }
+    return PlaybackState.fromJson(
+      jsonDecode(response.body) as Map<String, dynamic>,
+    );
+  }
+
+  @override
+  Future<void> appendEvents(
+    String sessionId,
+    List<Map<String, dynamic>> events,
+  ) async {
+    if (events.isEmpty) {
+      return;
+    }
+    await _postJson('/v1/sessions/$sessionId/events', <String, dynamic>{
+      'events': events,
+    }, expected: 200);
+  }
 
   @override
   Future<SessionHistoryPage> sessionHistory({
@@ -191,24 +276,15 @@ class HttpMeditationApi implements MeditationApi {
   }) async {
     final http.Response response = await _send(path, payload: payload);
     if (response.statusCode != expected) {
-      throw ApiException(
-        _describe(response),
-        statusCode: response.statusCode,
-      );
+      throw ApiException(_describe(response), statusCode: response.statusCode);
     }
     return jsonDecode(response.body) as Map<String, dynamic>;
   }
 
-  Future<void> _postNoContent(
-    String path,
-    Map<String, dynamic> payload,
-  ) async {
+  Future<void> _postNoContent(String path, Map<String, dynamic> payload) async {
     final http.Response response = await _send(path, payload: payload);
     if (response.statusCode != 204) {
-      throw ApiException(
-        _describe(response),
-        statusCode: response.statusCode,
-      );
+      throw ApiException(_describe(response), statusCode: response.statusCode);
     }
   }
 

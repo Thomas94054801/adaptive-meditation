@@ -10,10 +10,11 @@ from __future__ import annotations
 from functools import lru_cache
 from pathlib import Path
 
-from pydantic import Field
+from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from app.legal.operator import OperatorIdentity, operator_from_settings
+from app.persistence.schema_isolation import TEST_SCHEMA_PREFIX, is_test_schema
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
@@ -35,6 +36,12 @@ class Settings(BaseSettings):
         default="postgresql+psycopg://adaptive:adaptive@localhost:5432/adaptive",
         alias="DATABASE_URL",
     )
+    # PostgreSQL schema to place the application's tables in. Empty means the
+    # connection's default search_path. The test suite sets a unique one per run.
+    database_schema: str = Field(default="", alias="DATABASE_SCHEMA")
+    speech_provider: str = Field(default="none", alias="SPEECH_PROVIDER")
+    """Server-side renderer. Default none: the shipped provider is device-native
+    TTS, which runs on the client."""
     database_pool_size: int = Field(default=5, alias="DATABASE_POOL_SIZE")
     database_max_overflow: int = Field(default=5, alias="DATABASE_MAX_OVERFLOW")
 
@@ -53,6 +60,30 @@ class Settings(BaseSettings):
     ai_provider: str = Field(default="null", alias="AI_PROVIDER")
     tts_provider: str = Field(default="null", alias="TTS_PROVIDER")
     ai_api_key: str | None = Field(default=None, alias="AI_API_KEY")
+
+    @model_validator(mode="after")
+    def _refuse_test_schema_in_production(self) -> Settings:
+        """A production process must never be pointed at a test schema.
+
+        The test suite creates and drops schemas named ``test_*``. If production
+        configuration could select one, a deploy would either read an empty
+        database or have its tables dropped by a passing test run. The guard is
+        here rather than in the test helper because it has to hold for
+        configuration the tests never see.
+        """
+        if self.app_env != "production":
+            return self
+        if is_test_schema(self.database_schema):
+            raise ValueError(
+                f"DATABASE_SCHEMA={self.database_schema!r} is a test schema and "
+                "cannot be used in production"
+            )
+        if "search_path" in self.database_url and TEST_SCHEMA_PREFIX in self.database_url:
+            raise ValueError(
+                "DATABASE_URL sets a search_path naming a test schema; refusing "
+                "to start in production"
+            )
+        return self
 
     @property
     def ai_enabled(self) -> bool:

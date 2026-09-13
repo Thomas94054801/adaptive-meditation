@@ -13,6 +13,7 @@ from sqlalchemy import Engine, create_engine
 from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import StaticPool
 
+from app.persistence.schema_isolation import assert_safe_identifier
 from app.settings import Settings
 
 
@@ -20,16 +21,26 @@ def build_engine(settings: Settings) -> Engine:
     url = settings.database_url
     if url.startswith("sqlite"):
         # Used only by the test suite when no PostgreSQL server is available.
+        # A SQLite run is already isolated: each session gets its own file.
         return create_engine(
             url,
             connect_args={"check_same_thread": False},
             poolclass=StaticPool if ":memory:" in url else None,
         )
+
+    connect_args: dict[str, object] = {}
+    if settings.database_schema:
+        # Applied per connection rather than per session, so a pooled connection
+        # handed to a later request still resolves to the right schema.
+        schema = assert_safe_identifier(settings.database_schema)
+        connect_args["options"] = f"-csearch_path={schema}"
+
     return create_engine(
         url,
         pool_pre_ping=True,
         pool_size=settings.database_pool_size,
         max_overflow=settings.database_max_overflow,
+        connect_args=connect_args,
     )
 
 

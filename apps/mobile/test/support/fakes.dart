@@ -76,6 +76,104 @@ class FakeMeditationApi implements MeditationApi {
     ],
   );
 
+  static String _key(String letter) => letter * 64;
+
+  /// A typed plan shaped like the backend's: bells at both ends, speech
+  /// followed by its silence, markers between stages.
+  static final SessionPlanV2 typedPlan = SessionPlanV2(
+    planHash: _key('a'),
+    definitionId: _key('b'),
+    practiceId: 'body_awareness',
+    protocolId: 'body_awareness_v2',
+    publicTitle: 'Body Awareness',
+    locale: 'en-US',
+    targetTotalMs: 604000,
+    minimumTotalMs: 280000,
+    guidanceDensity: 0.7,
+    segments: <TimelineSegment>[
+      const TimelineSegment(
+        id: 'bell_open',
+        kind: SegmentKind.bell,
+        nominalMs: 2000,
+        assetKey: 'bell.opening',
+      ),
+      TimelineSegment(
+        id: 'speech_0_arrive',
+        kind: SegmentKind.speech,
+        nominalMs: 8000,
+        text: 'Feel the points where your body meets the chair.',
+        transcript: 'Feel the points where your body meets the chair.',
+        renderKey: _key('c'),
+      ),
+      const TimelineSegment(
+        id: 'silence_0_arrive',
+        kind: SegmentKind.silence,
+        nominalMs: 52000,
+        minMs: 20800,
+        elastic: true,
+      ),
+      const TimelineSegment(
+        id: 'marker_0_arrive',
+        kind: SegmentKind.marker,
+        nominalMs: 0,
+        markerId: 'arrive',
+      ),
+      TimelineSegment(
+        id: 'speech_1_sweep',
+        kind: SegmentKind.speech,
+        nominalMs: 9000,
+        text: 'Move attention slowly from the feet upward.',
+        transcript: 'Move attention slowly from the feet upward.',
+        renderKey: _key('d'),
+      ),
+      const TimelineSegment(
+        id: 'silence_1_sweep',
+        kind: SegmentKind.silence,
+        nominalMs: 471000,
+        minMs: 188400,
+        elastic: true,
+      ),
+      const TimelineSegment(
+        id: 'marker_1_sweep',
+        kind: SegmentKind.marker,
+        nominalMs: 0,
+        markerId: 'sweep',
+      ),
+      TimelineSegment(
+        id: 'speech_2_close',
+        kind: SegmentKind.speech,
+        nominalMs: 7000,
+        text: 'Move your fingers before you finish.',
+        transcript: 'Move your fingers before you finish.',
+        renderKey: _key('e'),
+      ),
+      const TimelineSegment(
+        id: 'silence_2_close',
+        kind: SegmentKind.silence,
+        nominalMs: 53000,
+        minMs: 21200,
+        elastic: true,
+      ),
+      const TimelineSegment(
+        id: 'bell_close',
+        kind: SegmentKind.bell,
+        nominalMs: 2000,
+        assetKey: 'bell.closing',
+      ),
+    ],
+  );
+
+  /// Whether createSession hands back a typed plan. Off by default so the
+  /// existing Program001 flow tests keep exercising the stage player.
+  bool withTypedPlan = false;
+
+  final List<Map<String, dynamic>> playbackCommands = <Map<String, dynamic>>[];
+  final List<Map<String, dynamic>> appendedEvents = <Map<String, dynamic>>[];
+  final List<String> preparedSessions = <String>[];
+
+  /// Returned by applyPlaybackCommand. Null means "accepted as sent".
+  PlaybackState? playbackReply;
+
   void _maybeFail() {
     final ApiException? failure = failWith;
     if (failure != null) {
@@ -106,6 +204,7 @@ class FakeMeditationApi implements MeditationApi {
       status: 'created',
       recommendation: recommendation,
       plan: plan,
+      planV2: withTypedPlan ? typedPlan : null,
     );
   }
 
@@ -151,11 +250,90 @@ class FakeMeditationApi implements MeditationApi {
   }
 
   @override
+  Future<RenderManifest> prepareSession(String sessionId) async {
+    _maybeFail();
+    preparedSessions.add(sessionId);
+    // The shipping default: nothing resolved server-side, every segment spoken
+    // by the device.
+    return RenderManifest(
+      sessionId: sessionId,
+      planHash: typedPlan.planHash,
+      providerId: 'none',
+      entries: const <RenderManifestEntry>[],
+      unresolved: typedPlan.speech
+          .map((TimelineSegment s) => s.id)
+          .toList(growable: false),
+      complete: false,
+    );
+  }
+
+  @override
+  Future<PlaybackState> applyPlaybackCommand({
+    required String sessionId,
+    required String command,
+    required String commandId,
+    required int sequence,
+    required int elapsedMs,
+    String? segmentId,
+  }) async {
+    _maybeFail();
+    playbackCommands.add(<String, dynamic>{
+      'command': command,
+      'command_id': commandId,
+      'sequence': sequence,
+      'elapsed_ms': elapsedMs,
+      'segment_id': segmentId,
+    });
+    return playbackReply ??
+        PlaybackState(
+          sessionId: sessionId,
+          runState: _stateAfter(command),
+          elapsedMs: elapsedMs,
+          commandSequence: sequence,
+          applied: true,
+          lastSegmentId: segmentId,
+        );
+  }
+
+  @override
+  Future<PlaybackState> playbackState(String sessionId) async {
+    _maybeFail();
+    return playbackReply ??
+        PlaybackState(
+          sessionId: sessionId,
+          runState: 'created',
+          elapsedMs: 0,
+          commandSequence: 0,
+          applied: false,
+        );
+  }
+
+  @override
+  Future<void> appendEvents(
+    String sessionId,
+    List<Map<String, dynamic>> events,
+  ) async {
+    _maybeFail();
+    appendedEvents.addAll(events);
+  }
+
+  static String _stateAfter(String command) => switch (command) {
+    'prepare' => 'preparing',
+    'resolved' => 'ready',
+    'start' || 'resume' => 'playing',
+    'pause' || 'interrupt' || 'interruption_ended' => 'paused',
+    'complete' => 'completed',
+    'abandon' => 'abandoned',
+    _ => 'failed',
+  };
+
+  @override
   Future<WellnessDisclaimer> disclaimer() async {
     _maybeFail();
     return const WellnessDisclaimer(
       title: 'Before you start',
-      body: 'This app supports mindfulness and general wellbeing. It is not a '
+      body:
+          'This app supports mindfulness and general wellbeing. It is not a '
           'medical service and does not diagnose or treat any condition.',
     );
   }
@@ -171,6 +349,8 @@ class FakeMeditationApi implements MeditationApi {
       'sessions': <dynamic>[],
       'feedback': <dynamic>[],
       'experiment_assignments': <dynamic>[],
+      'experiment_exposures': <dynamic>[],
+      'playback_events': <dynamic>[],
     };
   }
 }

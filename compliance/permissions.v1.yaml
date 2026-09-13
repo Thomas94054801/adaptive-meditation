@@ -1,10 +1,12 @@
 # Mobile capability declaration for V1.
 #
 # Anything false here must have no permission string in the iOS Info.plist or
-# the Android manifest. Store review treats a declared-but-unused permission as
-# a defect, and the product does not need any of these to run a session.
+# the Android manifest, and anything true must have one. Store review treats a
+# declared-but-unused permission as a defect, and an undeclared-but-used one as
+# a worse defect. A permission appears here only once the code creates the fact
+# it describes.
 schema_version: 1
-program: Program001
+program: Program004
 platform_permissions:
   camera:
     requested: false
@@ -43,8 +45,24 @@ platform_permissions:
     deferred_to: Program008
   background_refresh:
     requested: false
-    rationale: The session player runs in the foreground only.
+    rationale: >-
+      No background fetch or processing. Background audio is a separate
+      capability and is declared below; it does not grant background execution
+      for anything other than playing the session that is already running.
     deferred_to: null
+  background_audio:
+    requested: true
+    rationale: >-
+      Program004 plays guided audio, and a meditation the user has to keep the
+      phone unlocked for is a meditation spent watching a phone. Declared on iOS
+      as UIBackgroundModes=audio and on Android as a media-playback foreground
+      service. It carries no data collection: nothing is recorded, and the
+      microphone is not touched.
+    deferred_to: null
+    ios_declaration: UIBackgroundModes=audio
+    android_declaration: >-
+      android.permission.FOREGROUND_SERVICE and
+      android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK
 store_sensitive_capabilities:
   apple_iap:
     implemented: false
@@ -79,10 +97,27 @@ store_sensitive_capabilities:
       implementation of the same interface is the upgrade path if anything
       sensitive is ever stored here.
   text_to_speech:
-    implemented: false
+    implemented: true
     isolated_behind_adapter: true
-    adapter: TTSProvider
-    deferred_to: Program004
+    adapter: TtsProvider
+    provider: device-native
+    cloud_subprocessor: false
+    offline_capability: local_unconfirmed
+    notes: >-
+      Device-native synthesis only. No cloud TTS vendor is contacted, so no new
+      subprocessor is declared - a subprocessor entry would describe a data flow
+      that does not exist. Native is not assumed to be offline: on Android the
+      system engine may synthesise over the network and the app cannot observe
+      it, so the capability stays local_unconfirmed until a probe with the
+      network down says otherwise, and no offline claim is made on that basis.
+  background_audio_playback:
+    implemented: true
+    isolated_behind_adapter: true
+    adapter: AudioSessionPort
+    notes: >-
+      Audio focus, route changes and background playback. Losing headphones to
+      a route audible to the room interrupts playback rather than continuing,
+      which is a privacy behaviour rather than a convenience one.
 guest_usage:
   registration_required: false
   fake_identity_generated: false

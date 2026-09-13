@@ -7,18 +7,22 @@ assembled from request data.
 from __future__ import annotations
 
 import uuid
+from collections.abc import Sequence
+from dataclasses import dataclass
 from datetime import UTC, datetime
 
 import sqlalchemy as sa
 from sqlalchemy import select
 from sqlalchemy.orm import Session as OrmSession
 
+from app.domain.audio.render import RenderResult
 from app.domain.experiment.assignment import Assignment
 from app.domain.outcome.models import SessionOutcome
 from app.domain.recommendation.engine import Recommendation
 from app.domain.recommendation.scoring import RuleOutcome
 from app.domain.session.planner import SessionPlan
 from app.domain.state.models import CheckIn as CheckInModel
+from app.domain.timeline.definition import SessionDefinition
 from app.persistence import models
 
 
@@ -195,6 +199,9 @@ class SessionRepository:
         user_id: uuid.UUID | None = None,
         guest_id: uuid.UUID | None = None,
         outcome: RuleOutcome | None = None,
+        plan_v2: dict[str, object] | None = None,
+        plan_hash: str | None = None,
+        definition_id: str | None = None,
     ) -> models.Session:
         row = models.Session(
             id=uuid.uuid4(),
@@ -210,6 +217,12 @@ class SessionRepository:
             engine_version=recommendation.engine_version,
             rule_set_version=recommendation.rule_set_version,
             state_fingerprint=recommendation.state_fingerprint or None,
+            plan_v2=plan_v2,
+            plan_hash=plan_hash,
+            definition_id=definition_id,
+            run_state="created",
+            elapsed_ms=0,
+            command_sequence=0,
         )
         self._session.add(row)
         self._session.flush()
@@ -318,5 +331,268 @@ class SessionRepository:
             select(models.RecommendationCandidate)
             .where(models.RecommendationCandidate.session_id == session_id)
             .order_by(models.RecommendationCandidate.rank)
+        )
+        return list(self._session.execute(stmt).scalars())
+
+
+class SessionDefinitionRepository:
+    """Frozen guidance content.
+
+    Write-once by construction: a definition is addressed by the hash of its own
+    content, so "updating" one is a contradiction - different content is a
+    different id.
+    """
+
+    def __init__(self, session: OrmSession) -> None:
+        self._session = session
+
+    def ensure(self, definition: SessionDefinition) -> models.SessionDefinitionRow:
+        existing = self._session.get(models.SessionDefinitionRow, definition.definition_id)
+        if existing is not None:
+            return existing
+        row = models.SessionDefinitionRow(
+            id=definition.definition_id,
+            practice_id=definition.practice_id,
+            protocol_id=definition.protocol_id,
+            locale=definition.locale,
+            source=definition.source.value,
+            version=definition.version,
+            content=definition.as_dict(),
+            created_at=utcnow(),
+        )
+        self._session.add(row)
+        self._session.flush()
+        return row
+
+    def get(self, definition_id: str) -> SessionDefinition | None:
+        row = self._session.get(models.SessionDefinitionRow, definition_id)
+        if row is None:
+            return None
+        return SessionDefinition.from_dict(dict(row.content))
+
+
+class AudioRenderRepository:
+    """Measured renders, addressed by content.
+
+    Write-once like the definitions: a render_key already present describes the
+    same bytes by construction, so recording one again is a no-op rather than an
+    update. Nothing here takes a guest id, because nothing here is about a guest.
+    """
+
+    def __init__(self, session: OrmSession) -> None:
+        self._session = session
+
+    def get(self, render_key: str) -> RenderResult | None:
+        row = self._session.get(models.AudioRender, render_key)
+        if row is None:
+            return None
+        return RenderResult(
+            render_key=row.render_key,
+            duration_ms=row.duration_ms,
+            content_sha256=row.content_sha256,
+            uri=row.uri,
+            provider_id=row.provider_id,
+            provider_version=row.provider_version,
+            byte_size=row.byte_size,
+        )
+
+    def record(
+        self,
+        result: RenderResult,
+        *,
+        locale: str,
+        voice_id: str,
+        style: str,
+        render_version: str = "1",
+    ) -> models.AudioRender:
+        existing = self._session.get(models.AudioRender, result.render_key)
+        if existing is not None:
+            return existing
+        row = models.AudioRender(
+            render_key=result.render_key,
+            locale=locale,
+            voice_id=voice_id,
+            style=style,
+            provider_id=result.provider_id,
+            provider_version=result.provider_version,
+            render_version=render_version,
+            duration_ms=result.duration_ms,
+            content_sha256=result.content_sha256,
+            byte_size=result.byte_size,
+            uri=result.uri,
+            created_at=utcnow(),
+        )
+        self._session.add(row)
+        self._session.flush()
+        return row
+
+    def measured_durations(self, render_keys: list[str]) -> dict[str, int]:
+        """Measured durations for keys already rendered — SDD section 9.3.
+
+        The planner reads these and estimates only when they are missing, so
+        planning accuracy improves as the corpus warms.
+        """
+        if not render_keys:
+            return {}
+        stmt = select(models.AudioRender.render_key, models.AudioRender.duration_ms).where(
+            models.AudioRender.render_key.in_(render_keys)
+        )
+        return dict(self._session.execute(stmt).all())  # type: ignore[arg-type]
+
+
+@dataclass(frozen=True, slots=True)
+class EventDraft:
+    """One event a client is asking to append."""
+
+    sequence: int
+    event_type: str
+    segment_id: str | None = None
+    elapsed_ms: int = 0
+    command_id: str | None = None
+    detail: dict[str, object] | None = None
+
+
+class SessionEventRepository:
+    """Append-only playback journal.
+
+    Only ``append`` and ``read`` exist. There is deliberately no update and no
+    delete: a log that can be rewritten is not evidence, and the only way rows
+    leave is the guest-deletion cascade.
+    """
+
+    def __init__(self, session: OrmSession) -> None:
+        self._session = session
+
+    def append(
+        self,
+        *,
+        session_id: uuid.UUID,
+        sequence: int,
+        event_type: str,
+        segment_id: str | None = None,
+        elapsed_ms: int = 0,
+        command_id: str | None = None,
+        detail: dict[str, object] | None = None,
+    ) -> tuple[models.SessionEvent, bool]:
+        """Append one event. Returns (row, created).
+
+        Idempotent on (session, sequence): a retried request finds the existing
+        row rather than duplicating it, which is what makes the client free to
+        retry after a dropped connection.
+        """
+        stmt = select(models.SessionEvent).where(
+            models.SessionEvent.session_id == session_id,
+            models.SessionEvent.sequence == sequence,
+        )
+        existing = self._session.execute(stmt).scalar_one_or_none()
+        if existing is not None:
+            return existing, False
+
+        row = models.SessionEvent(
+            id=uuid.uuid4(),
+            session_id=session_id,
+            sequence=sequence,
+            event_type=event_type,
+            segment_id=segment_id,
+            elapsed_ms=max(0, elapsed_ms),
+            command_id=command_id,
+            detail=detail,
+            occurred_at=utcnow(),
+        )
+        self._session.add(row)
+        self._session.flush()
+        return row, True
+
+    def append_many(self, session_id: uuid.UUID, events: Sequence[EventDraft]) -> tuple[int, int]:
+        """Append a batch, returning (accepted, duplicates).
+
+        Two queries regardless of batch size - one to read the sequences already
+        present, one to insert the rest - because the budget is two per batch
+        and a select-then-insert per event turns a 200-event batch into 400
+        round trips.
+        """
+        if not events:
+            return 0, 0
+
+        wanted = {event.sequence for event in events}
+        taken_stmt = select(models.SessionEvent.sequence).where(
+            models.SessionEvent.session_id == session_id,
+            models.SessionEvent.sequence.in_(wanted),
+        )
+        taken = set(self._session.execute(taken_stmt).scalars())
+
+        now = utcnow()
+        rows: list[models.SessionEvent] = []
+        # Within one batch a repeated sequence is itself a duplicate; without
+        # this the unique constraint would reject the whole insert.
+        seen: set[int] = set()
+        for event in events:
+            if event.sequence in taken or event.sequence in seen:
+                continue
+            seen.add(event.sequence)
+            rows.append(
+                models.SessionEvent(
+                    id=uuid.uuid4(),
+                    session_id=session_id,
+                    sequence=event.sequence,
+                    event_type=event.event_type,
+                    segment_id=event.segment_id,
+                    elapsed_ms=max(0, event.elapsed_ms),
+                    command_id=event.command_id,
+                    detail=event.detail,
+                    occurred_at=now,
+                )
+            )
+
+        if rows:
+            self._session.add_all(rows)
+            self._session.flush()
+        return len(rows), len(events) - len(rows)
+
+    def command_already_applied(self, session_id: uuid.UUID, command_id: str) -> bool:
+        """Whether this command_id is already in the journal.
+
+        SDD section 5.4: replaying a command_id returns the same result without
+        re-applying it. The sequence rule catches an identical retry; this
+        catches a client that retried the same command under a new sequence,
+        which is the case that would otherwise double-apply.
+        """
+        stmt = (
+            select(models.SessionEvent.id)
+            .where(
+                models.SessionEvent.session_id == session_id,
+                models.SessionEvent.command_id == command_id,
+            )
+            .limit(1)
+        )
+        return self._session.execute(stmt).first() is not None
+
+    def read(self, session_id: uuid.UUID) -> list[models.SessionEvent]:
+        stmt = (
+            select(models.SessionEvent)
+            .where(models.SessionEvent.session_id == session_id)
+            .order_by(models.SessionEvent.sequence)
+        )
+        return list(self._session.execute(stmt).scalars())
+
+    def highest_sequence(self, session_id: uuid.UUID) -> int:
+        stmt = select(sa.func.max(models.SessionEvent.sequence)).where(
+            models.SessionEvent.session_id == session_id
+        )
+        return int(self._session.execute(stmt).scalar() or -1)
+
+    def for_guest(self, guest_id: uuid.UUID) -> list[models.SessionEvent]:
+        """Every event for one guest, for the export.
+
+        Bounded by that one person's own practice: roughly twenty rows per
+        session, so a heavy user with a thousand sessions is about twenty
+        thousand small rows. Unbounded by design, like the rest of the export -
+        an export that silently stops early is not an export.
+        """
+        session_ids = select(models.Session.id).where(models.Session.guest_id == guest_id)
+        stmt = (
+            select(models.SessionEvent)
+            .where(models.SessionEvent.session_id.in_(session_ids))
+            .order_by(models.SessionEvent.session_id, models.SessionEvent.sequence)
         )
         return list(self._session.execute(stmt).scalars())

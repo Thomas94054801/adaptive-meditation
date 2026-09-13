@@ -1,8 +1,15 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
-    <!-- The only permission V1 requests. Camera, microphone, location and
-         health permissions are deliberately absent; see
-         compliance/permissions.v1.yaml. -->
+    <!-- Camera, microphone, location and health permissions are deliberately
+         absent; see compliance/permissions.v1.yaml. Nothing here is declared
+         speculatively: each permission below exists because the code actually
+         creates the fact it describes. -->
     <uses-permission android:name="android.permission.INTERNET"/>
+    <!-- Program004: a meditation continues while the screen is off. A session
+         the user has to keep the phone unlocked for is a session spent watching
+         a phone. Both permissions are required for a media playback foreground
+         service on API 34 and above. -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK"/>
     <application
         android:label="adaptive_meditation"
         android:name="${applicationName}"
