@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import uuid
 
 from fastapi import APIRouter, HTTPException, Response, status
@@ -29,6 +30,8 @@ from app.api.v1.schemas import (
     RecommendationResponse,
     RenderManifestEntryResponse,
     RenderManifestResponse,
+    ResolutionRequest,
+    ResolutionResponse,
     SessionCreateRequest,
     SessionEventBatchRequest,
     SessionEventBatchResponse,
@@ -55,6 +58,12 @@ from app.domain.timeline.planner_v2 import (
     PLAN_TIME_VOICE as DEFAULT_VOICE_ID,
 )
 from app.domain.timeline.planner_v2 import SessionPlanV2
+from app.domain.timeline.resolution import (
+    ResolutionInvalid,
+    ResolvedTimeline,
+    recompute_hash,
+    validate_against_plan,
+)
 from app.domain.timeline.service import (
     apply_command,
     plan_response_payload,
@@ -67,12 +76,20 @@ from app.persistence.repositories import (
     CheckInRepository,
     EventDraft,
     GuestRepository,
+    ResolutionRevisionConflict,
+    SequenceTaken,
     SessionDefinitionRepository,
     SessionEventRepository,
     SessionRepository,
+    SessionResolutionRepository,
 )
 
 router = APIRouter(prefix="/v1", tags=["v1"])
+
+# Bumped when what counts as delivery evidence changes, so a historical
+# session's evidence can be read with the rules that were in force when it was
+# recorded rather than today's.
+DELIVERY_EVIDENCE_VERSION = "1"
 
 ERROR_RESPONSES: dict[int | str, dict[str, object]] = {
     401: {"model": ErrorResponse, "description": "Guest identity required"},
@@ -459,10 +476,28 @@ def apply_playback_command(
     """
     row = _owned_session(session_id, guest_id, db)
     events = SessionEventRepository(db)
-    if events.command_already_applied(row.id, payload.command_id):
-        # SDD 5.4: a replayed command_id returns the same result without
-        # re-applying it. The sequence rule below catches an identical retry;
-        # this catches the same command retried under a fresh sequence.
+
+    # Program004R A6. A command is identified by its id and validated by a
+    # digest of its meaningful payload: the same id with the same content
+    # returns the existing result, the same id with *different* content is a
+    # client defect and gets a conflict rather than silently keeping either
+    # version.
+    digest = _command_digest(payload)
+    existing = events.command_record(row.id, payload.command_id)
+    if existing is not None:
+        if existing.payload_digest is not None and existing.payload_digest != digest:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail={
+                    "code": "command_payload_conflict",
+                    "message": (
+                        "this command_id was already applied with different "
+                        "content; reusing an id for a different command is a "
+                        "client defect, not a retry"
+                    ),
+                },
+            )
+        # A genuine retry. The same result, without re-applying anything.
         return _playback_state(row, applied=False)
 
     try:
@@ -497,14 +532,24 @@ def apply_playback_command(
         elif outcome.state.value == "abandoned":
             sessions.finish(row, completed=False)
 
-        _, created = events.append(
-            session_id=row.id,
-            sequence=payload.sequence,
-            event_type=_EVENT_FOR_COMMAND[payload.command],
-            segment_id=payload.segment_id,
-            elapsed_ms=outcome.elapsed_ms,
-            command_id=payload.command_id,
-        )
+        try:
+            _, created = events.append_command(
+                session_id=row.id,
+                sequence=payload.sequence,
+                event_type=_EVENT_FOR_COMMAND[payload.command],
+                segment_id=payload.segment_id,
+                elapsed_ms=outcome.elapsed_ms,
+                command_id=payload.command_id,
+                payload_digest=digest,
+            )
+        except SequenceTaken as error:
+            # Commands and events share one per-session counter. Applying the
+            # state change while losing its journal entry would leave a run
+            # nobody can reconstruct, so the whole request rolls back.
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail={"code": "sequence_conflict", "message": str(error)},
+            ) from None
         if not created:
             # Commands and events share one per-session counter. A command that
             # lands on a sequence already holding something else means the
@@ -520,6 +565,94 @@ def apply_playback_command(
             )
 
     return _playback_state(row, applied=outcome.applied)
+
+
+@router.post(
+    "/sessions/{session_id}/resolution",
+    operation_id="recordSessionResolution",
+    response_model=ResolutionResponse,
+    status_code=status.HTTP_201_CREATED,
+    responses={k: ERROR_RESPONSES[k] for k in (401, 404, 409, 422)},
+    summary="Record the resolution a device computed",
+)
+def record_session_resolution(
+    session_id: uuid.UUID,
+    payload: ResolutionRequest,
+    db: DbSessionDep,
+    guest_id: RequiredGuestDep,
+) -> ResolutionResponse:
+    """Validate and store a device-computed resolution.
+
+    The server recomputes the hash from the content and validates the content
+    against the frozen plan - segment identity and order, silence floors,
+    versions, and whether an audible mode actually has audio hashes. Checking
+    that numbers are non-negative would not be validation; a tampered or buggy
+    client can produce a perfectly non-negative lie.
+    """
+    row = _owned_session(session_id, guest_id, db)
+    if not row.plan_v2:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={
+                "code": "no_typed_plan",
+                "message": "This session has no typed plan to resolve.",
+            },
+        )
+
+    try:
+        resolution = ResolvedTimeline.from_dict(payload.model_dump(mode="json"))
+    except (ResolutionInvalid, ValueError, KeyError) as error:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail={"code": "resolution_malformed", "message": str(error)},
+        ) from None
+
+    # Recomputed, not trusted. A resolution whose stated hash does not match
+    # its own content is rejected outright.
+    recomputed = recompute_hash(resolution)
+    if recomputed != payload.resolution_hash:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail={
+                "code": "resolution_hash_mismatch",
+                "message": "the resolution hash does not match its content",
+            },
+        )
+
+    plan = SessionPlanV2.from_dict(dict(row.plan_v2))
+    try:
+        validate_against_plan(resolution, plan)
+    except ResolutionInvalid as error:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail={"code": "resolution_rejected", "message": str(error)},
+        ) from None
+
+    resolutions = SessionResolutionRepository(db)
+    try:
+        stored, created = resolutions.record(
+            session_id=row.id, resolution=resolution, server_validated=True
+        )
+    except ResolutionRevisionConflict as error:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={"code": "resolution_revision_conflict", "message": str(error)},
+        ) from None
+
+    # The session points at the newest resolution, so a reader does not have to
+    # know how revisions work to find the current one.
+    if created and (row.resolution_hash is None or stored.revision >= 1):
+        row.resolution_hash = stored.resolution_hash
+        row.audio_mode = stored.audio_mode
+        row.delivery_evidence_version = DELIVERY_EVIDENCE_VERSION
+
+    return ResolutionResponse(
+        session_id=row.id,
+        revision=stored.revision,
+        resolution_hash=stored.resolution_hash,
+        server_validated=stored.server_validated,
+        created=created,
+    )
 
 
 @router.post(
@@ -654,6 +787,25 @@ _EVENT_FOR_COMMAND = {
     "fail": "playback_failed",
     "recover": "session_prepared",
 }
+
+
+def _command_digest(payload: PlaybackCommandRequest) -> str:
+    """Digest the fields that make a command mean what it means.
+
+    The command itself, the position it reports and the segment it names.
+
+    **Sequence is deliberately excluded.** Sequence is transport ordering, not
+    identity: SDD A6 requires a retry to keep its original command id, and a
+    client that bumps its counter while re-sending the same stored operation
+    is still retrying that operation. Including sequence here would turn every
+    such retry into a false conflict, which is the opposite of the guarantee.
+    """
+    parts = (
+        payload.command,
+        str(payload.elapsed_ms),
+        payload.segment_id or "",
+    )
+    return hashlib.sha256("\x00".join(parts).encode("utf-8")).hexdigest()
 
 
 def _playback_state(row: models.Session, *, applied: bool) -> PlaybackStateResponse:

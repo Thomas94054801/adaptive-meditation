@@ -27,6 +27,28 @@ retention:
     retained_until: user deletion, by cascade
     automatic_expiry: none
 
+  local_playback_checkpoint:
+    retained_until: >-
+      the session ends and syncs; then at most 100 terminal checkpoints and at
+      most 30 days
+    automatic_expiry: local pruning by count and age
+    rationale: >-
+      Kept only long enough to resume an interrupted session and to reconcile
+      with the backend. Pruning it removes a local copy, not the server-side
+      history, which follows the guest cascade like everything else.
+
+  local_outbox:
+    retained_until: acknowledged by the backend
+    automatic_expiry: >-
+      none by time; bounded by 10,000 rows or 20 MiB soft and 50,000 rows or
+      50 MiB hard, with a reserve of 1,000 rows and 2 MiB held for completion
+      and feedback
+    rationale: >-
+      An operation that has not reached the server is the only copy that
+      exists, so nothing critical is dropped to make room. Only reconstructible
+      telemetry is compacted, and when the hard limit is reached the app stops
+      promising recoverability rather than quietly losing data.
+
   session_events:
     retained_until: user deletion, by cascade
     automatic_expiry: none

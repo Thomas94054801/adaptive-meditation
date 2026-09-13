@@ -284,15 +284,28 @@ def test_a_replayed_command_id_under_a_new_sequence_is_not_reapplied(
     first = client.post(f"/v1/sessions/{session_id}/playback", json=payload, headers=guest_headers)
     assert first.json()["applied"] is True
 
+    # A real retry re-sends the stored operation verbatim, bumping only the
+    # transport sequence. Program004R excludes sequence from the command digest
+    # for exactly this reason: a retry keeps its id, so it must also be allowed
+    # to keep its content while the counter moves on.
     second = client.post(
         f"/v1/sessions/{session_id}/playback",
-        json={**payload, "sequence": 5, "elapsed_ms": 12_000},
+        json={**payload, "sequence": 5},
         headers=guest_headers,
     )
     assert second.status_code == 200
     assert second.json()["applied"] is False
     assert second.json()["command_sequence"] == 4
     assert second.json()["elapsed_ms"] == 9000
+
+    # Changing the content under the same id is a different matter: that is a
+    # conflict, covered in tests/test_command_identity.py.
+    conflicting = client.post(
+        f"/v1/sessions/{session_id}/playback",
+        json={**payload, "sequence": 6, "elapsed_ms": 12_000},
+        headers=guest_headers,
+    )
+    assert conflicting.status_code == 409
 
 
 def test_distinct_commands_still_apply_after_a_replay(

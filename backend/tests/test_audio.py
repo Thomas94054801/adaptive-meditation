@@ -60,6 +60,9 @@ from app.settings import Settings
 from tests.test_playback_api import CHECK_IN, start_session
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
+# Inside the Flutter package since Program004R: assets outside the package root
+# cannot be bundled, which is why Program004's bells could never be played.
+ASSET_ROOT = REPO_ROOT / "apps" / "mobile" / "assets" / "audio"
 
 
 @pytest.fixture
@@ -426,19 +429,19 @@ def test_an_unknown_provider_is_refused_rather_than_ignored() -> None:
 
 def test_every_shipped_audio_file_has_a_provenance_entry() -> None:
     """An asset without a traceable origin is a store rejection waiting."""
-    manifest = json.loads((REPO_ROOT / "assets" / "audio" / "PROVENANCE.json").read_text())
+    manifest = json.loads((ASSET_ROOT / "PROVENANCE.json").read_text())
     declared = {entry["file"] for entry in manifest["assets"]}
 
     on_disk = {
         str(path.relative_to(REPO_ROOT))
-        for path in (REPO_ROOT / "assets" / "audio").rglob("*")
+        for path in ASSET_ROOT.rglob("*")
         if path.is_file() and path.suffix.lower() in {".wav", ".mp3", ".m4a", ".ogg", ".aac"}
     }
     assert on_disk == declared, f"undeclared: {on_disk - declared}"
 
 
 def test_no_audio_asset_comes_from_a_third_party() -> None:
-    manifest = json.loads((REPO_ROOT / "assets" / "audio" / "PROVENANCE.json").read_text())
+    manifest = json.loads((ASSET_ROOT / "PROVENANCE.json").read_text())
     for entry in manifest["assets"]:
         assert entry["third_party_content"] is False, entry["file"]
         assert entry["origin"] == "generated", entry["file"]
@@ -448,7 +451,7 @@ def test_no_audio_asset_comes_from_a_third_party() -> None:
 
 def test_the_bell_files_match_their_recorded_hashes() -> None:
     """Content addressing for assets too: a swapped file fails here."""
-    manifest = json.loads((REPO_ROOT / "assets" / "audio" / "PROVENANCE.json").read_text())
+    manifest = json.loads((ASSET_ROOT / "PROVENANCE.json").read_text())
     for entry in manifest["assets"]:
         path = REPO_ROOT / entry["file"]
         with wave.open(str(path), "rb") as handle:
@@ -461,7 +464,7 @@ def test_the_bell_files_match_their_recorded_hashes() -> None:
 def test_the_plan_references_only_declared_bell_assets(plan) -> None:
     from app.domain.timeline.segments import BellSegment
 
-    manifest = json.loads((REPO_ROOT / "assets" / "audio" / "PROVENANCE.json").read_text())
+    manifest = json.loads((ASSET_ROOT / "PROVENANCE.json").read_text())
     declared = {entry["asset_key"] for entry in manifest["assets"]}
     for segment in plan.timeline.segments:
         if isinstance(segment, BellSegment):
@@ -546,3 +549,29 @@ def test_the_render_table_holds_no_guest_reference(
 
     columns = set(models.AudioRender.__table__.columns.keys())
     assert not columns & {"guest_id", "user_id", "session_id", "device_id"}
+
+
+def test_every_bell_is_declared_as_a_bundled_flutter_asset() -> None:
+    """A file in the repository that pubspec does not bundle cannot be played.
+
+    Program004 generated, hashed and CI-verified these bells while declaring
+    no assets section at all, so none of them could reach a device. The
+    provenance check proves files exist; only this proves they ship.
+    """
+    import yaml
+
+    manifest = json.loads((ASSET_ROOT / "PROVENANCE.json").read_text())
+    pubspec = yaml.safe_load(
+        (REPO_ROOT / "apps" / "mobile" / "pubspec.yaml").read_text(encoding="utf-8")
+    )
+    declared = pubspec["flutter"].get("assets") or []
+
+    for entry in manifest["assets"]:
+        asset = entry["flutter_asset"]
+        covered = any(
+            asset == listed or (listed.endswith("/") and asset.startswith(listed))
+            for listed in declared
+        )
+        assert covered, f"{asset} is not bundled by pubspec.yaml"
+        # And the declared path must resolve to the file on disk.
+        assert (REPO_ROOT / "apps" / "mobile" / asset).is_file(), asset

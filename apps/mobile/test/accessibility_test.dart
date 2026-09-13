@@ -21,7 +21,9 @@ void main() {
     WidgetTester tester,
   ) async {
     final SemanticsHandle handle = tester.ensureSemantics();
-    await tester.pumpWidget(wrap(const WelcomeScreen(), api: FakeMeditationApi()));
+    await tester.pumpWidget(
+      wrap(const WelcomeScreen(), api: FakeMeditationApi()),
+    );
 
     await expectLater(tester, meetsGuideline(androidTapTargetGuideline));
     await expectLater(tester, meetsGuideline(iOSTapTargetGuideline));
@@ -34,7 +36,9 @@ void main() {
     WidgetTester tester,
   ) async {
     final SemanticsHandle handle = tester.ensureSemantics();
-    await tester.pumpWidget(wrap(const CheckInScreen(), api: FakeMeditationApi()));
+    await tester.pumpWidget(
+      wrap(const CheckInScreen(), api: FakeMeditationApi()),
+    );
 
     await expectLater(tester, meetsGuideline(androidTapTargetGuideline));
     await expectLater(tester, meetsGuideline(textContrastGuideline));
@@ -70,7 +74,9 @@ void main() {
   testWidgets('the wellness disclaimer appears once, on one surface', (
     WidgetTester tester,
   ) async {
-    await tester.pumpWidget(wrap(const WelcomeScreen(), api: FakeMeditationApi()));
+    await tester.pumpWidget(
+      wrap(const WelcomeScreen(), api: FakeMeditationApi()),
+    );
     expect(find.byKey(const Key('welcome_disclaimer')), findsOneWidget);
     expect(find.textContaining('does not diagnose'), findsOneWidget);
     expect(find.textContaining('cannot help in an emergency'), findsOneWidget);

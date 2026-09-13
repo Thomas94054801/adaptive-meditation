@@ -168,7 +168,9 @@ class _SessionScreenState extends State<SessionScreen> {
                   Expanded(
                     child: Semantics(
                       button: true,
-                      label: _running ? 'Pause the session' : 'Resume the session',
+                      label: _running
+                          ? 'Pause the session'
+                          : 'Resume the session',
                       child: OutlinedButton(
                         key: const Key('session_pause_resume'),
                         onPressed: _running ? _pause : _resume,

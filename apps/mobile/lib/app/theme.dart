@@ -9,7 +9,9 @@ ThemeData buildTheme(Brightness brightness) {
   return ThemeData(
     colorScheme: scheme,
     useMaterial3: true,
-    sliderTheme: const SliderThemeData(showValueIndicator: ShowValueIndicator.onDrag),
+    sliderTheme: const SliderThemeData(
+      showValueIndicator: ShowValueIndicator.onDrag,
+    ),
     filledButtonTheme: FilledButtonThemeData(
       style: FilledButton.styleFrom(
         minimumSize: const Size.fromHeight(52),

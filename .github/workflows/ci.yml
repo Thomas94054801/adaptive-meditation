@@ -105,6 +105,14 @@ jobs:
           # audio with unclear provenance must not reach a store build.
           python scripts/generate_bells.py --check
 
+      - name: Cross-language timing fixtures are current
+        working-directory: backend
+        run: |
+          # The Python and Dart resolution implementations are tested against
+          # this file. Regenerating it and comparing byte for byte is what
+          # stops one side changing the canonicalisation without the other.
+          python scripts/generate_timing_fixtures.py --check
+
       - name: Compare rule sets
         working-directory: backend
         run: |
@@ -159,11 +167,19 @@ jobs:
           # A shared CI runner is not a benchmark environment, so these numbers
           # are never reported as performance figures. The step exists to catch
           # an order-of-magnitude regression - a path that starts doing a query
-          # per segment, say - which is visible even through runner noise. The
-          # budgets it checks have roughly two orders of magnitude of headroom
-          # locally, so runner variance alone cannot fail it.
+          # per segment, say. The earlier claim here that "runner variance alone
+          # cannot fail it" was wrong: on a docs-only commit the runner reported
+          # event ingest at p95 173 ms against a 120 ms budget (p50 6.4 ms), then
+          # 7 ms on the identical tree. With 30 runs, p95 is the second-largest
+          # sample, so two hiccups fail the gate. ci-guard mode re-measures a
+          # breached path once and fails on a second breach; anything past ten
+          # times its budget fails outright and is never excused as variance.
+          # The product budgets are unchanged.
           alembic upgrade head
-          python scripts/benchmark_paths.py --runs 30
+          python scripts/benchmark_paths.py \
+            --runs 30 \
+            --mode ci-guard \
+            --environment github-hosted-ci
 
   android-store-readiness:
     name: Android store readiness
@@ -318,7 +334,7 @@ jobs:
 
       - run: flutter pub get
 
-      - run: flutter analyze
+      - run: flutter analyze --fatal-infos
 
       - run: flutter test
 

@@ -56,6 +56,7 @@ def test_required_paths_and_operations(committed_spec: dict[str, Any]) -> None:
         ("/v1/sessions/{session_id}/playback", "get"): "getPlaybackState",
         ("/v1/sessions/{session_id}/events", "post"): "appendSessionEvents",
         ("/v1/sessions/{session_id}/prepare", "post"): "prepareSession",
+        ("/v1/sessions/{session_id}/resolution", "post"): "recordSessionResolution",
         ("/v1/recommendations/candidates", "post"): "createRecommendationCandidates",
         ("/v1/sessions/history", "get"): "listSessionHistory",
         ("/v1/me/export", "get"): "exportGuestData",

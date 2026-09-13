@@ -10,6 +10,9 @@ library;
 
 import 'audio_session.dart';
 import 'silent_audio_session.dart';
+import 'tts_types.dart';
+
+export 'tts_types.dart';
 
 /// Account identity. Program001 is guest-only; no account exists to sign in to.
 abstract interface class AuthProvider {
@@ -72,20 +75,35 @@ enum TtsOfflineCapability {
   bool get permitsOfflineClaim => this == localConfirmed;
 }
 
-/// Spoken guidance. Device-native TTS is the first shipped provider.
+/// Spoken guidance. Device-native synthesis to a file is the shipped provider.
+///
+/// There is deliberately no `speak(text)`. Playback is always from a verified
+/// local file, so a session's duration is known before it starts and the
+/// elastic-silence arithmetic has something to work with. A live synthesiser on
+/// the playback path would make both impossible.
 abstract interface class TtsProvider {
   bool get isSupported;
 
   /// What has actually been established about this voice working offline.
   TtsOfflineCapability get offlineCapability;
 
-  Future<void> speak(String text);
+  /// What this device will actually do, probed at runtime rather than assumed.
+  Future<TtsEngineDescriptor> describe();
+
+  /// Synthesise to a local file, returning the produced bytes' hash and the
+  /// time synthesis took.
+  Future<SynthesisResult> synthesizeToFile(SynthesisRequest request);
 
   Future<void> stop();
 }
 
-class SilentTtsProvider implements TtsProvider {
-  const SilentTtsProvider();
+/// A provider for a device that cannot synthesise at all.
+///
+/// Not a default and not a convenience fallback: selecting this in production
+/// means the app runs in an explicitly recorded degraded mode, and the release
+/// wiring test refuses to let it be injected silently.
+class UnavailableTtsProvider implements TtsProvider {
+  const UnavailableTtsProvider();
 
   @override
   bool get isSupported => false;
@@ -95,7 +113,23 @@ class SilentTtsProvider implements TtsProvider {
       TtsOfflineCapability.unavailable;
 
   @override
-  Future<void> speak(String text) async {}
+  Future<TtsEngineDescriptor> describe() async => const TtsEngineDescriptor(
+    engineId: 'none',
+    voiceId: 'none',
+    locale: 'en-US',
+    rate: defaultSpeechRate,
+    pitch: defaultPitch,
+    style: 'calm',
+    engineVersion: 'none',
+    encoding: 'none',
+  );
+
+  @override
+  Future<SynthesisResult> synthesizeToFile(SynthesisRequest request) async {
+    // async, so callers get a rejected future rather than a synchronous throw
+    // out of something whose signature promises a future.
+    throw const SynthesisFailed('no text-to-speech engine on this device');
+  }
 
   @override
   Future<void> stop() async {}
@@ -167,7 +201,7 @@ class PlatformAdapters {
     AudioSessionPort? audioSession,
   }) : auth = auth ?? const GuestOnlyAuthProvider(),
        billing = billing ?? const UnavailableBillingProvider(),
-       tts = tts ?? const SilentTtsProvider(),
+       tts = tts ?? const UnavailableTtsProvider(),
        storage = storage ?? InMemorySecureStorageProvider(),
        notifications = notifications ?? const DisabledNotificationProvider(),
        health = health ?? const DeferredHealthProvider(),

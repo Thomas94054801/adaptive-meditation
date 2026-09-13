@@ -8,6 +8,7 @@ import '../../core/models.dart';
 import '../../platform/audio_session.dart';
 import '../feedback/feedback_screen.dart';
 import 'playback_controller.dart';
+import 'playback_runtime.dart';
 import 'transcript_sheet.dart';
 
 /// The Program004 player.
@@ -50,6 +51,11 @@ class _PlayerScreenState extends State<PlayerScreen> {
   );
 
   final Stopwatch _monotonic = Stopwatch();
+
+  /// Present when this session has real audio. Null for a legacy stage-plan
+  /// session, and the difference is visible in what may be claimed afterwards.
+  PlaybackRuntime? _runtime;
+  StreamSubscription<RuntimeEvent>? _runtimeSub;
   Timer? _ticker;
   StreamSubscription<AudioInterruption>? _interruptions;
   StreamSubscription<void>? _focusRegained;
@@ -81,7 +87,21 @@ class _PlayerScreenState extends State<PlayerScreen> {
     _ticker?.cancel();
     _interruptions?.cancel();
     _focusRegained?.cancel();
+    // The runtime is retired, not merely unsubscribed, so a late player
+    // callback cannot advance a run that no longer has a screen.
+    _runtimeSub?.cancel();
+    unawaited(_runtime?.dispose() ?? Future<void>.value());
     super.dispose();
+  }
+
+  /// Attach a runtime and let it own completion.
+  void attachRuntime(PlaybackRuntime runtime) {
+    _runtime = runtime;
+    _runtimeSub = runtime.events.listen((RuntimeEvent event) {
+      if (event.kind == RuntimeEventKind.sessionDelivered) {
+        unawaited(_completeFromRuntime(runtime));
+      }
+    });
   }
 
   String _newCommandId() {
@@ -167,11 +187,33 @@ class _PlayerScreenState extends State<PlayerScreen> {
     _monotonic.stop();
   }
 
+  /// Advance the displayed position. Nothing else.
+  ///
+  /// This used to call _complete() once the counter passed the planned total,
+  /// which meant a session completed with no audio evidence of any kind - in a
+  /// release build, every "completed" session was a silent countdown. The
+  /// runtime owns completion now; the ticker interpolates position between
+  /// real player callbacks so the clock does not visibly stutter, and that is
+  /// the whole of its job.
   void _tick() {
     setState(() => _controller.tickTo(_monotonic.elapsedMilliseconds));
-    if (_controller.reachedEnd) {
-      _complete();
+    if (_controller.reachedEnd && _runtime == null) {
+      // No runtime: this is a legacy stage-plan session with no audio at all.
+      // It still ends, and it is recorded as a silent completion rather than
+      // as an audible one.
+      _stopTicker();
+      unawaited(_finishWithoutAudio());
     }
+  }
+
+  /// End a session that never had audio.
+  ///
+  /// Kept separate from the audible path and named for what it is, so a
+  /// countdown can never be reported as a delivered meditation.
+  Future<void> _finishWithoutAudio() async {
+    _send(RunCommand.complete);
+    await _flush();
+    await _goToFeedback(completed: true, audible: false);
   }
 
   void _pause() {
@@ -180,18 +222,26 @@ class _PlayerScreenState extends State<PlayerScreen> {
     setState(() => _notice = null);
   }
 
-  Future<void> _complete() async {
+  /// Complete a session the runtime says was actually delivered.
+  ///
+  /// Only ever called from a runtime delivery event, never from the ticker.
+  Future<void> _completeFromRuntime(PlaybackRuntime runtime) async {
     _stopTicker();
     _send(RunCommand.complete);
     await _flush();
-    await _goToFeedback(completed: true);
+    await _goToFeedback(
+      completed: true,
+      audible: runtime.isAudibleCompletion,
+      ratio: runtime.completionRatio,
+    );
   }
 
   Future<void> _end() async {
     _stopTicker();
     _send(RunCommand.abandon);
     await _flush();
-    await _goToFeedback(completed: false);
+    // Abandonment is never a completion, whatever fraction played.
+    await _goToFeedback(completed: false, audible: false);
   }
 
   /// Applies a command locally, then tells the backend. Local first, because
@@ -236,7 +286,10 @@ class _PlayerScreenState extends State<PlayerScreen> {
       return;
     }
     setState(() {
-      _controller.adopt(
+      // reconcile, not adopt: it refuses a snapshot that would lower the
+      // sequence, move position backwards or revive a terminal run. The old
+      // adopt did all three, which is the G6 failure.
+      _controller.reconcile(
         state: RunState.values.firstWhere(
           (RunState s) => s.wireValue == state.runState,
           orElse: () => _controller.state,
@@ -266,7 +319,11 @@ class _PlayerScreenState extends State<PlayerScreen> {
     }
   }
 
-  Future<void> _goToFeedback({required bool completed}) async {
+  Future<void> _goToFeedback({
+    required bool completed,
+    required bool audible,
+    double? ratio,
+  }) async {
     await AppScope.of(context).adapters.audioSession.deactivate();
     if (!mounted) {
       return;
@@ -277,7 +334,10 @@ class _PlayerScreenState extends State<PlayerScreen> {
           session: widget.session,
           beforeState: widget.beforeState,
           completed: completed,
-          completionRatio: _controller.progress,
+          // The runtime's duration-weighted coverage when there is one. The
+          // controller's progress is a display value and would count a
+          // one-second bell like an eight-minute silence.
+          completionRatio: ratio ?? _controller.progress,
         ),
       ),
     );

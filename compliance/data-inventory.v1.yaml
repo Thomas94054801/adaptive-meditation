@@ -67,6 +67,41 @@ v1:
       deterministic: true
       deletable: true
       advertising_use: false
+    local_playback_checkpoint:
+      # Not "collected" in the Apple or Google sense: nothing here is
+      # transmitted to or gathered by the developer. The form that does leave
+      # the device is declared as playback_journal below and mapped in both
+      # store documents. Declaring this separately as collected would describe
+      # a second data flow that does not exist.
+      collected: false
+      stored: on_device_only
+      fields: [session_id, plan_hash, resolution_hash, audio_mode, run_state,
+               command_sequence, logical_position_ms, confirmed_segment_id,
+               pause_reason]
+      purpose: [session_resume, offline_delivery]
+      deletable: true
+      advertising_use: false
+      notes: >-
+        A durable local record of where a session got to, so a session played
+        offline can be resumed after the process is killed. Never leaves the
+        device except as the playback events already declared below. Cleared on
+        guest deletion, which also writes a local tombstone so a late response
+        cannot recreate it. No monotonic clock value is stored - a stopwatch
+        reading means nothing across a reboot.
+    local_outbox:
+      # Same reasoning: the outbox holds copies of requests that have not yet
+      # been sent. Once sent they are the already-declared playback events; an
+      # unsent copy on the user's own device is not an additional collection.
+      collected: false
+      stored: on_device_only
+      fields: [session_id, kind, command_id, sequence, payload, attempts]
+      purpose: [reliable_delivery]
+      deletable: true
+      advertising_use: false
+      notes: >-
+        Operations not yet acknowledged by the backend. Holds the same content
+        the API would have received, queued until it can be sent. Bounded by
+        explicit row and byte quotas and cleared on guest deletion.
     playback_journal:
       collected: true
       fields: [sequence, event_type, segment_id, elapsed_ms, command_id, occurred_at]

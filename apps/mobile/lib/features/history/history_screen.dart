@@ -108,9 +108,16 @@ class _HistoryScreenState extends State<HistoryScreen> {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: <Widget>[
-              Text(_error!, key: const Key('history_error'), textAlign: TextAlign.center),
+              Text(
+                _error!,
+                key: const Key('history_error'),
+                textAlign: TextAlign.center,
+              ),
               const SizedBox(height: 16),
-              OutlinedButton(onPressed: _refresh, child: const Text('Try again')),
+              OutlinedButton(
+                onPressed: _refresh,
+                child: const Text('Try again'),
+              ),
             ],
           ),
         ),

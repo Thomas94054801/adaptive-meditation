@@ -70,6 +70,32 @@ def inventory_categories(inventory: dict[str, Any]) -> set[str]:
     return found
 
 
+def audit_on_device_claims(inventory: dict[str, Any]) -> list[str]:
+    """Check every not-collected-because-on-device claim explains itself.
+
+    ``collected: false`` is the right answer for data that never leaves the
+    device, and it is also the obvious way to dodge a store mapping. So an
+    entry claiming it must also say ``stored: on_device_only`` and carry notes
+    saying why - enough friction that the flag cannot be flipped absent
+    mindedly to make this checker quiet.
+    """
+    problems: list[str] = []
+    v1 = inventory.get("v1", {})
+    for section in MAPPABLE_SECTIONS:
+        for name, entry in (v1.get(section) or {}).items():
+            if not isinstance(entry, dict) or entry.get("stored") != "on_device_only":
+                continue
+            path = f"v1.{section}.{name}"
+            if entry.get("collected") is not False:
+                problems.append(f"{path}: on_device_only but collected is not false")
+            if not str(entry.get("notes", "")).strip():
+                problems.append(
+                    f"{path}: claims on_device_only without saying why it is "
+                    "not a collection"
+                )
+    return problems
+
+
 def mapped_refs(document: dict[str, Any]) -> set[str]:
     refs: set[str] = set()
     for row in document.get("data_types", []):
@@ -87,6 +113,12 @@ def check_store_mappings(failures: list[str], results: list[str]) -> None:
     if not categories:
         failures.append("data inventory declares no collected category; check the parser")
         return
+
+    problems = audit_on_device_claims(inventory)
+    if problems:
+        failures.extend(f"on-device claim unjustified: {problem}" for problem in problems)
+    else:
+        results.append("every on-device-only claim states why it is not a collection")
 
     for label, path in (
         ("Apple App Privacy", APPLE_PRIVACY),

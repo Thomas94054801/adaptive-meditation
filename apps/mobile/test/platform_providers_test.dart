@@ -25,9 +25,26 @@ void main() {
     await expectLater(adapters.billing.restorePurchases(), completes);
   });
 
-  test('the silent TTS provider produces nothing and does not throw', () async {
-    await expectLater(adapters.tts.speak('anything'), completes);
+  test('the unavailable TTS provider refuses rather than pretending', () async {
+    // There is no speak(): playback is always from a file. A device with no
+    // engine must fail synthesis loudly, because a provider that silently
+    // produces nothing is how Program004 shipped silent countdowns.
+    await expectLater(
+      adapters.tts.synthesizeToFile(
+        const SynthesisRequest(
+          text: 'anything',
+          locale: 'en-US',
+          renderKeyHint: 'k',
+        ),
+      ),
+      throwsA(isA<SynthesisFailed>()),
+    );
     await expectLater(adapters.tts.stop(), completes);
+    expect(
+      (await adapters.tts.describe()).engineId,
+      'none',
+      reason: 'it must not claim an engine it does not have',
+    );
   });
 
   test('secure storage round-trips and clears', () async {

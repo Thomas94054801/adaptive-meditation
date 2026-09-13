@@ -210,6 +210,53 @@ class PlaybackStateResponse(BaseModel):
     resume_offset_ms: int = 0
 
 
+class ResolvedSegmentRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    segment_id: str = Field(min_length=1, max_length=64)
+    kind: Literal["speech", "silence", "bell", "marker"]
+    effective_ms: Annotated[int, Field(ge=0, le=30 * 60 * 1000)]
+    audio_sha256: Annotated[str, Field(min_length=64, max_length=64)] | None = None
+    """Output fingerprint of the produced bytes. Absent for silence."""
+
+
+class ResolutionRequest(BaseModel):
+    """A resolution the device computed and is already playing from.
+
+    Posted for the record, not for permission: the client reached `ready` on
+    its own verification, and a server ACK is never a gate on offline start.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    canonicalization_version: str = Field(max_length=16)
+    plan_hash: Annotated[str, Field(min_length=64, max_length=64)]
+    locale: str = Field(max_length=16)
+    revision: Annotated[int, Field(ge=1, le=1000)]
+    timing_policy_version: str = Field(max_length=16)
+    measurement_source: Literal["device_reported", "plan_estimate"]
+    audio_mode: Literal["audible", "silent_by_choice", "silent_degraded"]
+    segments: Annotated[list[ResolvedSegmentRequest], Field(min_length=1, max_length=400)]
+    total_ms: Annotated[int, Field(ge=0)]
+    extended_by_ms: Annotated[int, Field(ge=0)]
+    absorbed_ms: Annotated[int, Field(ge=0)]
+    outcome: str = Field(max_length=32)
+    resolution_hash: Annotated[str, Field(min_length=64, max_length=64)]
+    """Recomputed server-side. A mismatch is rejected rather than trusted."""
+
+
+class ResolutionResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    session_id: uuid.UUID
+    revision: int
+    resolution_hash: str
+    server_validated: bool
+    """True when the backend recomputed the hash and agreed. The client does
+    not wait for this to start playing."""
+    created: bool
+
+
 class RenderManifestEntryResponse(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
