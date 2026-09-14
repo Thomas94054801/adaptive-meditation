@@ -2,7 +2,9 @@ import 'package:flutter/material.dart';
 
 import '../../app/app_scope.dart';
 import '../../core/api.dart';
+import '../../core/durable_store.dart';
 import '../../core/models.dart';
+import '../../core/preferences.dart';
 import '../../core/reasons.dart';
 import '../session/player_screen.dart';
 import '../session/session_screen.dart';
@@ -62,8 +64,17 @@ class _RecommendationScreenState extends State<RecommendationScreen> {
     });
     final AppScope scope = AppScope.of(context);
     try {
+      // Program005: the stored preference travels with the request, so the
+      // value the server applied is the one on this device, frozen with the
+      // session. No store (widget tests) sends nothing and the server
+      // applies its default.
+      final DurableStore? store = scope.store;
+      final bool? adaptiveWording = store == null
+          ? null
+          : await Preferences(store).adaptiveWordingEnabled();
       final MeditationSession session = await scope.api.createSession(
         widget.receipt.id,
+        adaptiveWording: adaptiveWording,
       );
       final SessionPlanV2? typedPlan = session.planV2;
       if (typedPlan == null) {

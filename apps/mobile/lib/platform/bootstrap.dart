@@ -6,6 +6,7 @@ import 'package:sqflite/sqflite.dart';
 import '../core/durable_store.dart';
 
 import 'audio_player_port.dart';
+import 'local_notification_provider.dart';
 import 'native_audio_player.dart';
 import 'native_audio_session.dart';
 import 'native_tts_provider.dart';
@@ -79,9 +80,16 @@ Future<AudioRuntimeAdapters> bootstrapAudioRuntime({
   );
   final DurableStore durableStore = DurableStore(database: database);
 
+  // 5. Program005: the reminder provider. Initialised here so the zone
+  // database and the plugin are ready before any screen asks; nothing in
+  // initialise() requests a permission.
+  final LocalNotificationProvider notifications = LocalNotificationProvider();
+  await notifications.initialise();
+
   return AudioRuntimeAdapters(
     adapters: PlatformAdapters(
       tts: tts,
+      notifications: notifications,
       audioSession: session,
       storage: SecureStorageProviderAdapter(store),
     ),
@@ -106,6 +114,11 @@ const Set<String> forbiddenProductionAdapterTypes = <String>{
   'FakeTtsProvider',
   'FakeAudioPlayer',
   'FakeMeditationApi',
+  // Program005: the inert reminder provider is for tests and platforms
+  // without an implementation. On Android and iOS shipping it would be a
+  // settings switch that schedules nothing and says it did.
+  'DisabledNotificationProvider',
+  'FakeNotificationProvider',
 };
 
 /// Whether an adapter set is fit to ship.
@@ -125,6 +138,7 @@ List<String> auditProductionAdapters({
 
   check(adapters.tts);
   check(adapters.audioSession);
+  check(adapters.notifications);
   check(player);
   return offenders;
 }

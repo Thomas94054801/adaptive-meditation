@@ -36,6 +36,17 @@ dependencies:
   # Content-addressed hashing of synthesised bytes, matching the backend.
   crypto: ^3.0.0
 
+  # Program005 local reminder. One daily OS recurrence at a fixed id in the
+  # device's IANA zone (SDD section 9.1). Three direct packages: the
+  # scheduler and the zone reader ship native code; `timezone` is pure Dart,
+  # already in the scheduler's dependency closure, and declared because the
+  # app imports it. A first-party AlarmManager/boot-receiver scheduler was
+  # refused for the reason Program004R refused a first-party foreground
+  # service. Resolved against the existing lockfile with no other change.
+  flutter_local_notifications: ^22.3.0
+  timezone: ^0.11.1
+  flutter_timezone: ^5.1.0
+
 dev_dependencies:
   flutter_test:
     sdk: flutter

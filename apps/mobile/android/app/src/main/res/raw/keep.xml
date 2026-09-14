@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Program005. The release shrinker removes resources nothing references
+     from Kotlin/Java, and the reminder icon is referenced only by name from
+     Dart, so without this it is stripped and the notification silently fails
+     to post (flutter_local_notifications README, "Release build
+     configuration"). -->
+<resources xmlns:tools="http://schemas.android.com/tools"
+    tools:keep="@drawable/ic_reminder" />

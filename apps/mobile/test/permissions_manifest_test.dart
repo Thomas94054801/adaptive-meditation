@@ -24,8 +24,12 @@ void main() {
     'android.permission.BODY_SENSORS',
     'android.permission.ACTIVITY_RECOGNITION',
     'android.permission.READ_CONTACTS',
-    'android.permission.POST_NOTIFICATIONS',
     'android.permission.health',
+    // Program005 schedules inexact reminders and never these.
+    'android.permission.SCHEDULE_EXACT_ALARM',
+    'android.permission.USE_EXACT_ALARM',
+    'android.permission.USE_FULL_SCREEN_INTENT',
+    'android.permission.ACCESS_NOTIFICATION_POLICY',
   ];
 
   const List<String> prohibitedIos = <String>[
@@ -81,7 +85,6 @@ void main() {
       'location',
       'healthkit',
       'health_connect',
-      'notifications',
     ]) {
       expect(
         (permissions[capability] as YamlMap)['requested'],
@@ -89,6 +92,12 @@ void main() {
         reason: '$capability is declared as requested in permissions.v1.yaml',
       );
     }
+    // Program005: notifications are requested, and only after an explicit
+    // opt-in. The declaration must say both.
+    final YamlMap notifications = permissions['notifications'] as YamlMap;
+    expect(notifications['requested'], isTrue);
+    expect(notifications['requested_only_after_opt_in'], isTrue);
+    expect(notifications['remote_push'], isFalse);
     expect(declaration['claims']['medical_diagnosis'], isFalse);
     expect(declaration['claims']['medical_treatment'], isFalse);
     expect(declaration['claims']['advertising_use_of_wellness_data'], isFalse);
@@ -131,6 +140,8 @@ void main() {
       'android.permission.INTERNET',
       'android.permission.FOREGROUND_SERVICE',
       'android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK',
+      // Program005: re-registers the reminder after a reboot.
+      'android.permission.RECEIVE_BOOT_COMPLETED',
     };
     final RegExp uses = RegExp(r'uses-permission android:name="([^"]+)"');
     final Set<String> declared = uses

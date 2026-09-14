@@ -48,7 +48,10 @@ sys.path.insert(0, str(BACKEND_ROOT))
 
 from fastapi.testclient import TestClient  # noqa: E402
 
+from app.domain.personalization import EVIDENCE_CAP  # noqa: E402
 from app.main import create_app  # noqa: E402
+from app.persistence.repositories import SessionRepository  # noqa: E402
+from app.persistence.seed import seed_sparse_history  # noqa: E402
 from app.settings import Settings  # noqa: E402
 
 CHECK_IN = {
@@ -248,6 +251,19 @@ def open_bench(database_url: str, runs: int) -> tuple[TestClient, Bench]:
                 headers=guest,
             )
 
+        # Program005: a guest whose history is mostly other practices and
+        # abandoned runs, with a handful of completed matches. Sparse on
+        # purpose: the number then reflects the index walking past rows that
+        # do not match, not the cap cutting a dense history short.
+        database = client.app.state.database
+        sparse_guest, sparse_practice = seed_sparse_history(database, rows=400, matches=5)
+
+        def familiarity_query() -> None:
+            with database.session() as session:
+                SessionRepository(session).completed_count(
+                    sparse_guest, sparse_practice, cap=EVIDENCE_CAP
+                )
+
         specs: list[tuple[str, float, Callable[[], object]]] = [
             # The Program003 baseline paths, measured the same way so the
             # comparison is like for like.
@@ -285,6 +301,9 @@ def open_bench(database_url: str, runs: int) -> tuple[TestClient, Bench]:
                 120,
                 lambda: client.get(f"/v1/sessions/{session_id}/playback", headers=guest),
             ),
+            # Program005. A controlled-environment design target; on the
+            # hosted runner it guards for an order of magnitude like the rest.
+            ("familiarity context query", 50, familiarity_query),
         ]
 
         return client, Bench(client=client, specs=specs, runs=runs)

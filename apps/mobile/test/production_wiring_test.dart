@@ -1,5 +1,6 @@
 import 'package:adaptive_meditation/platform/audio_player_port.dart';
 import 'package:adaptive_meditation/platform/bootstrap.dart';
+import 'package:adaptive_meditation/platform/local_notification_provider.dart';
 import 'package:adaptive_meditation/platform/native_audio_player.dart';
 import 'package:adaptive_meditation/platform/native_audio_session.dart';
 import 'package:adaptive_meditation/platform/native_tts_provider.dart';
@@ -47,10 +48,25 @@ void main() {
         adapters: PlatformAdapters(
           tts: NativeTtsProvider(),
           audioSession: NativeAudioSession(),
+          notifications: LocalNotificationProvider(),
         ),
         player: NativeAudioPlayer(),
       );
       expect(offenders, isEmpty);
+    });
+
+    test('Program005: the inert reminder provider is refused', () {
+      // A settings switch that schedules nothing and says it did is the
+      // Program004 silent-countdown defect wearing a different hat.
+      final List<String> offenders = auditProductionAdapters(
+        adapters: PlatformAdapters(
+          tts: NativeTtsProvider(),
+          audioSession: NativeAudioSession(),
+          notifications: const DisabledNotificationProvider(),
+        ),
+        player: NativeAudioPlayer(),
+      );
+      expect(offenders, contains('DisabledNotificationProvider'));
     });
   });
 

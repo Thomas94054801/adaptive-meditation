@@ -13,12 +13,42 @@ from typing import Protocol, runtime_checkable
 
 @dataclass(frozen=True, slots=True)
 class PersonalizationRequest:
-    """What a provider is allowed to see. The envelope fields are read-only."""
+    """What a provider is allowed to see. The envelope fields are read-only.
+
+    Program005 adds the presentation variant already chosen for this session
+    ("canonical" or "returning"), so a provider rewrites in that register. It
+    is the only non-envelope fact here: no guest id, session id, check-in
+    values, history, experiment arm, feedback or free text ever join it, and
+    ``FORBIDDEN_REQUEST_FIELDS`` is checked against the serialised request.
+    """
 
     practice_id: str
     duration_minutes: int
     guidance_density: float
     stage_prompts: tuple[str, ...]
+    presentation_variant: str = "canonical"
+
+
+# Names that must never appear in a serialised personalization request.
+FORBIDDEN_REQUEST_FIELDS: frozenset[str] = frozenset(
+    {
+        "guest_id",
+        "session_id",
+        "check_in_id",
+        "user_id",
+        "stress",
+        "energy",
+        "mental_activity",
+        "sleepiness",
+        "history",
+        "experiment",
+        "variant_assignment",
+        "feedback",
+        "notes",
+        "outcome_score",
+        "device_id",
+    }
+)
 
 
 @dataclass(frozen=True, slots=True)

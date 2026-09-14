@@ -15,6 +15,11 @@ android {
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
+        // Program005: flutter_local_notifications 10+ schedules through
+        // java.time and requires core-library desugaring on every app that
+        // depends on it (its README, "Gradle setup"). minSdk 24 already has
+        // native multidex, so that half of the same instructions is moot.
+        isCoreLibraryDesugaringEnabled = true
     }
 
     defaultConfig {
@@ -52,4 +57,10 @@ kotlin {
 
 flutter {
     source = "../.."
+}
+
+dependencies {
+    // Required by isCoreLibraryDesugaringEnabled above. The version the
+    // plugin's README names; AGP 9.1 accepts it.
+    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.4")
 }

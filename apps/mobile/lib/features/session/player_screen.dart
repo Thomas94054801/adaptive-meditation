@@ -363,6 +363,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
               context,
               plan: widget.plan,
               currentSegmentId: line?.id,
+              personalization: widget.session.personalization,
             ),
           ),
         ],
@@ -373,6 +374,19 @@ class _PlayerScreenState extends State<PlayerScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: <Widget>[
+              // Program005: when the wording was adapted, say so and why, in
+              // one line. Absent otherwise - "not personalized" needs no
+              // banner.
+              if (widget.session.personalization?.personalized ??
+                  false) ...<Widget>[
+                Text(
+                  'Wording adapted: '
+                  '${widget.session.personalization!.reasonText.toLowerCase()}',
+                  key: const Key('player_personalized'),
+                  style: theme.textTheme.bodySmall,
+                ),
+                const SizedBox(height: 8),
+              ],
               Semantics(
                 label:
                     'Session progress, '

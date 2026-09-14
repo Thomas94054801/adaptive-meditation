@@ -13,6 +13,7 @@ from typing import Annotated
 from fastapi import Depends, Header, HTTPException, Request, status
 from sqlalchemy.orm import Session as OrmSession
 
+from app.ai.providers.base import AIProvider
 from app.domain.practice.catalog import KnowledgeCatalog
 from app.domain.recommendation.engine import RecommendationEngine
 from app.persistence.database import Database
@@ -31,6 +32,16 @@ def get_engine(request: Request) -> RecommendationEngine:
 
 def get_catalog(request: Request) -> KnowledgeCatalog:
     return get_engine(request).catalog
+
+
+def get_ai_provider(request: Request) -> AIProvider:
+    """The presentation provider main.py built from settings; null by default.
+
+    Program005 is the first production caller. Tests override this dependency
+    with a stub; production never sees anything but what the registry resolves.
+    """
+    provider: AIProvider = request.app.state.ai_provider
+    return provider
 
 
 def get_db_session(request: Request) -> Iterator[OrmSession]:
@@ -54,6 +65,7 @@ def get_database(request: Request) -> Database:
 SettingsDep = Annotated[Settings, Depends(get_settings)]
 EngineDep = Annotated[RecommendationEngine, Depends(get_engine)]
 CatalogDep = Annotated[KnowledgeCatalog, Depends(get_catalog)]
+AIProviderDep = Annotated[AIProvider, Depends(get_ai_provider)]
 DbSessionDep = Annotated[OrmSession, Depends(get_db_session)]
 DatabaseDep = Annotated[Database, Depends(get_database)]
 

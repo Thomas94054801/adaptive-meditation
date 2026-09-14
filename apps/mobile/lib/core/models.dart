@@ -237,6 +237,69 @@ class SessionPlan {
   final List<SessionStage> stages;
 }
 
+/// What the backend personalized about a session, and why — Program005.
+///
+/// Frozen with the session. `reason` is a code the backend owns; the strings
+/// a person reads are [reasonText], owned here. No score and no model output.
+class Personalization {
+  const Personalization({
+    required this.policyVersion,
+    required this.familiarityTier,
+    required this.evidenceCount,
+    required this.evidenceCapped,
+    required this.presentationVariant,
+    required this.adaptiveWordingEnabled,
+    required this.personalized,
+    required this.providerId,
+    required this.aiAttempted,
+    required this.aiAccepted,
+    required this.reason,
+    this.fallbackReason,
+  });
+
+  factory Personalization.fromJson(Map<String, dynamic> json) =>
+      Personalization(
+        policyVersion: json['personalization_policy_version'] as String,
+        familiarityTier: json['familiarity_tier'] as String,
+        evidenceCount: json['evidence_count'] as int,
+        evidenceCapped: json['evidence_capped'] as bool,
+        presentationVariant: json['presentation_variant'] as String,
+        adaptiveWordingEnabled: json['adaptive_wording_enabled'] as bool,
+        personalized: json['personalized'] as bool,
+        providerId: json['provider_id'] as String,
+        aiAttempted: json['ai_attempted'] as bool,
+        aiAccepted: json['ai_accepted'] as bool,
+        reason: json['reason'] as String,
+        fallbackReason: json['fallback_reason'] as String?,
+      );
+
+  final String policyVersion;
+  final String familiarityTier;
+  final int evidenceCount;
+  final bool evidenceCapped;
+  final String presentationVariant;
+  final bool adaptiveWordingEnabled;
+  final bool personalized;
+  final String providerId;
+  final bool aiAttempted;
+  final bool aiAccepted;
+  final String reason;
+  final String? fallbackReason;
+
+  /// The one factual sentence shown to the person.
+  String get reasonText => switch (reason) {
+    'returning_to_this_practice' => 'Returning to this practice',
+    'first_time_with_this_practice' => 'First time with this practice',
+    'adaptive_wording_off' => 'Adaptive wording is off',
+    'no_history_available' => 'No history available',
+    _ => reason,
+  };
+
+  /// Whether generative wording was actually used. The null provider is not
+  /// AI use, whatever the pipeline looked like on the way through.
+  bool get usedAi => aiAttempted && aiAccepted;
+}
+
 class MeditationSession {
   const MeditationSession({
     required this.id,
@@ -246,6 +309,7 @@ class MeditationSession {
     required this.plan,
     this.planV2,
     this.runState = 'created',
+    this.personalization,
   });
 
   factory MeditationSession.fromJson(Map<String, dynamic> json) =>
@@ -263,6 +327,12 @@ class MeditationSession {
             ? null
             : SessionPlanV2.fromJson(json['plan_v2'] as Map<String, dynamic>),
         runState: json['run_state'] as String? ?? 'created',
+        // Null before Program005: shown as not personalized, not guessed.
+        personalization: json['personalization'] == null
+            ? null
+            : Personalization.fromJson(
+                json['personalization'] as Map<String, dynamic>,
+              ),
       );
 
   final String id;
@@ -275,6 +345,9 @@ class MeditationSession {
   final SessionPlanV2? planV2;
 
   final String runState;
+
+  /// Program005 provenance, when the backend recorded it.
+  final Personalization? personalization;
 
   bool get hasTypedPlan => planV2 != null;
 }

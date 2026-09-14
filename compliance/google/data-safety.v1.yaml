@@ -58,6 +58,31 @@ data_types:
     encrypted_in_transit: true
     deletion_supported: true
 
+  # Program005: see the Apple mapping for the reasoning; same two entries.
+  - play_category: App activity
+    play_type: App interactions
+    inventory_ref: v1.wellness.adaptive_wording_preference
+    collected: true
+    shared: false
+    ephemeral: false
+    required: false
+    optional: true
+    purposes: [App functionality]
+    encrypted_in_transit: true
+    deletion_supported: true
+
+  - play_category: App activity
+    play_type: App interactions
+    inventory_ref: v1.wellness.personalization_provenance
+    collected: true
+    shared: false
+    ephemeral: false
+    required: true
+    optional: false
+    purposes: [App functionality]
+    encrypted_in_transit: true
+    deletion_supported: true
+
   - play_category: App activity
     play_type: Other user-generated content
     inventory_ref: v1.wellness.feedback

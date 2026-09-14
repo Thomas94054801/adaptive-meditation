@@ -20,8 +20,8 @@
 # and cache remotely, and this app never gives it a remote URL - playback
 # sources are restricted to verified local file and asset URIs.
 schema_version: 1
-program: Program004R
-audited_on: "2026-09-12"
+program: Program005
+audited_on: "2026-09-14"
 
 prohibited_in_v1:
   # Not "not currently used" - actively disallowed. Each of these would change
@@ -182,6 +182,51 @@ sdks:
       HTTPS calls to this product's own backend only. No third-party endpoint is
       contacted by the client.
 
+  # Program005 adds two native packages for the local daily reminder. Resolved
+  # against the existing lockfile with no version change to any package
+  # already listed; the transitive additions are pure Dart (dbus, equatable,
+  # petitparser, xml) plus the plugin's linux/windows/web sub-packages, none of
+  # which ships native code on iOS or Android.
+  - package: flutter_local_notifications
+    version: "22.3.1"
+    ios_native_code: true
+    android_native_code: true
+    data_collection: none
+    network_access: false
+    required_reason_api: true
+    required_reason_detail: >-
+      Its bundled privacy manifest declares UserDefaults (CA92.1), the same
+      category the Flutter engine already declares. No tracking, no collected
+      data types.
+    privacy_manifest_present: true
+    tracking: false
+    android_permissions_contributed:
+      - android.permission.POST_NOTIFICATIONS
+      - android.permission.VIBRATE
+    android_native_dependencies: [androidx.core, androidx.media, gson]
+    purpose: >-
+      Schedules the one local daily reminder (id 1) through the OS: AlarmManager
+      on Android (inexact, allow-while-idle) and UNUserNotificationCenter on
+      iOS. The app declares RECEIVE_BOOT_COMPLETED and the plugin's two
+      receivers so the schedule survives a reboot. Initialised with every iOS
+      request flag off; the OS prompt is reachable only from the settings
+      toggle's opt-in. The notification carries fixed neutral copy and no
+      data about the person.
+
+  - package: flutter_timezone
+    version: "5.1.0"
+    ios_native_code: true
+    android_native_code: true
+    data_collection: none
+    network_access: false
+    required_reason_api: false
+    privacy_manifest_present: true
+    tracking: false
+    purpose: >-
+      Reads the device's IANA time-zone identifier so the reminder is
+      scheduled at the chosen clock time in the person's zone. The identifier
+      stays on the device; it is not sent anywhere.
+
 runtime:
   - package: flutter
     version: "3.47.3"
@@ -207,6 +252,16 @@ dart_only_dependencies:
   - typed_data
   - vector_math
   - web
+  # Program005
+  - timezone            # 0.11.1, direct: TZDateTime and the zone database
+  - dbus                # transitive, used only by the plugin's Linux package
+  - equatable
+  - petitparser
+  - xml
+  - flutter_local_notifications_platform_interface
+  - flutter_local_notifications_linux
+  - flutter_local_notifications_windows
+  - flutter_local_notifications_web
 
 removed_in_program003:
   - package: shared_preferences

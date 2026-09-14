@@ -101,6 +101,17 @@ class Session(Base):
             "'playing', 'paused', 'completed', 'abandoned', 'failed')",
             name="ck_sessions_run_state",
         ),
+        # Program005: the familiarity count's predicate, exactly - guest, status
+        # and the practice inside the recommendation JSON. LIMIT bounds what
+        # the count returns, not what a scan reads; without this a guest with
+        # a long history of other practices would pay for every row of it on
+        # each session create.
+        sa.Index(
+            "ix_sessions_familiarity",
+            "guest_id",
+            "status",
+            sa.text("(recommendation ->> 'practice_id')"),
+        ),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(sa.Uuid, primary_key=True, default=uuid.uuid4)
@@ -140,6 +151,9 @@ class Session(Base):
     # state would change a frozen check constraint and every historical replay.
     pause_reason: Mapped[str | None] = mapped_column(sa.String(32), nullable=True)
     delivery_evidence_version: Mapped[str | None] = mapped_column(sa.String(16), nullable=True)
+    # Program005: what was personalized and why, written once at create.
+    # Nullable: a session from before Program005 reads as not personalized.
+    personalization: Mapped[dict[str, object] | None] = mapped_column(JSONType, nullable=True)
     last_segment_id: Mapped[str | None] = mapped_column(sa.String(64), nullable=True)
     elapsed_ms: Mapped[int] = mapped_column(
         sa.Integer, nullable=False, default=0, server_default="0"

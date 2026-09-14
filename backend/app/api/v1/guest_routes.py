@@ -160,6 +160,8 @@ def export_guest_data(guest_id: RequiredGuestDep, db: DbSessionDep) -> GuestExpo
                 "completed_at": row.completed_at.isoformat() if row.completed_at else None,
                 "protocol_id": row.protocol_id,
                 "plan": row.plan,
+                # Program005: what was personalized and why. Null before 005.
+                "personalization": row.personalization,
             }
             for row in session_rows
         ],

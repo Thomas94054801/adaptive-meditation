@@ -170,7 +170,7 @@ class DurableStore {
   final Database _db;
   final OutboxQuota quota;
 
-  static const int schemaVersion = 2;
+  static const int schemaVersion = 3;
 
   /// Create or upgrade the schema. Versioned independently of the server's.
   ///
@@ -252,6 +252,69 @@ class DurableStore {
         'CREATE INDEX IF NOT EXISTS idx_feedback_sync ON feedback(sync_state)',
       );
     }
+    if (from < 3 && to >= 3) {
+      // Program005. Preferences live here rather than in the secure store:
+      // that store holds one value (the guest id) and on iOS is a keychain
+      // item that outlives an uninstall, which a preference must not be. A
+      // key/value table because there are four keys and a deletion marker,
+      // not a profile.
+      await db.execute('''
+        CREATE TABLE IF NOT EXISTS preferences (
+          key TEXT PRIMARY KEY,
+          value TEXT NOT NULL,
+          updated_at_ms INTEGER NOT NULL
+        )
+      ''');
+    }
+  }
+
+  // ----- preferences -------------------------------------------------------
+
+  /// One preference, or null when it was never written.
+  Future<String?> readPreference(String key) async {
+    final List<Map<String, Object?>> rows = await _db.query(
+      'preferences',
+      columns: <String>['value'],
+      where: 'key = ?',
+      whereArgs: <Object?>[key],
+      limit: 1,
+    );
+    if (rows.isEmpty) {
+      return null;
+    }
+    return rows.single['value'] as String?;
+  }
+
+  /// Every preference, for a settings screen to render in one read.
+  Future<Map<String, String>> readPreferences() async {
+    final List<Map<String, Object?>> rows = await _db.query('preferences');
+    return <String, String>{
+      for (final Map<String, Object?> row in rows)
+        row['key']! as String: row['value']! as String,
+    };
+  }
+
+  /// Write one preference. Upsert by key; the caller learns of a failure by
+  /// the future completing with an error, never by a silent no-op.
+  Future<void> writePreference(
+    String key,
+    String value, {
+    required int nowMs,
+  }) async {
+    await _db.rawInsert(
+      'INSERT INTO preferences (key, value, updated_at_ms) VALUES (?, ?, ?) '
+      'ON CONFLICT(key) DO UPDATE SET value = excluded.value, '
+      'updated_at_ms = excluded.updated_at_ms',
+      <Object?>[key, value, nowMs],
+    );
+  }
+
+  Future<void> deletePreference(String key) async {
+    await _db.delete(
+      'preferences',
+      where: 'key = ?',
+      whereArgs: <Object?>[key],
+    );
   }
 
   // ----- checkpoints -------------------------------------------------------
@@ -551,6 +614,14 @@ class DurableStore {
       await txn.delete('outbox');
       await txn.delete('checkpoints');
       await txn.delete('feedback');
+      // Preferences go too, except the deletion marker: it is what lets a
+      // relaunch finish the procedure this call is one step of, and the
+      // procedure clears it itself once every step has confirmed.
+      await txn.delete(
+        'preferences',
+        where: 'key <> ?',
+        whereArgs: <Object?>[deletionPendingKey],
+      );
       await txn.insert('deleted_guests', <String, Object?>{
         'guest_id': guestId,
         'deleted_at_ms': nowMs,
@@ -567,6 +638,18 @@ class DurableStore {
     return rows.isNotEmpty;
   }
 }
+
+/// Preference keys. Strings rather than an enum so a stored row that predates
+/// a rename still reads.
+const String adaptiveWordingKey = 'adaptive_wording_enabled';
+const String reminderEnabledKey = 'reminder_enabled';
+const String reminderHourKey = 'reminder_hour';
+const String reminderMinuteKey = 'reminder_minute';
+const String reminderZoneKey = 'reminder_zone';
+
+/// Set to the guest id while a deletion is in progress (Program005 SDD 9.5).
+/// Survives forgetGuest on purpose; cleared only when the procedure is done.
+const String deletionPendingKey = 'deletion_pending';
 
 /// The two sync states this program actually uses.
 ///

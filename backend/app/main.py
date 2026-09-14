@@ -14,6 +14,7 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
+from app.ai.providers.registry import build_ai_provider
 from app.api.system import router as system_router
 from app.api.v1.guest_routes import router as guest_router
 from app.api.v1.routes import router as v1_router
@@ -51,6 +52,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     catalog = get_catalog(settings.knowledge_dir)
     app.state.settings = settings
     app.state.recommendation_engine = RecommendationEngine(catalog)
+    # Program005: the presentation provider becomes reachable. With no
+    # AI_PROVIDER/AI_API_KEY this is the null provider, which returns the
+    # deterministic wording unchanged; an unknown name still fails loudly.
+    app.state.ai_provider = build_ai_provider(settings)
     # Building the engine object does not open a connection; /healthz and
     # /v1/recommendations stay answerable with the database down.
     app.state.database = Database(settings)

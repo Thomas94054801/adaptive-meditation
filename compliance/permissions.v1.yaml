@@ -6,7 +6,7 @@
 # a worse defect. A permission appears here only once the code creates the fact
 # it describes.
 schema_version: 1
-program: Program004
+program: Program005
 platform_permissions:
   camera:
     requested: false
@@ -29,12 +29,26 @@ platform_permissions:
     rationale: No social features in V1.
     deferred_to: null
   notifications:
-    requested: false
+    requested: true
+    requested_only_after_opt_in: true
+    remote_push: false
     rationale: >-
-      Practice reminders are a Program005 personalization feature. V1 ships no
-      notification prompt at all rather than asking for a permission it does not
-      yet use.
-    deferred_to: Program005
+      Program005: one local daily reminder at a time the person chose. The OS
+      prompt appears only when the person turns the reminder on and taps
+      Continue on the explanation sheet - never at launch, onboarding, opening
+      settings, plugin initialisation, resume or upgrade. Denial is a normal
+      state. Android 13+ requests POST_NOTIFICATIONS (contributed by the
+      flutter_local_notifications manifest); below 13 the app reads whether
+      its notifications are enabled and never assumes. RECEIVE_BOOT_COMPLETED
+      is declared by the app so the plugin can re-register the schedule after
+      a reboot. No exact-alarm, full-screen-intent or DND-bypass permission
+      exists in this app: the reminder is inexact by design.
+    android_permissions:
+      - android.permission.POST_NOTIFICATIONS
+      - android.permission.VIBRATE
+      - android.permission.RECEIVE_BOOT_COMPLETED
+    ios_usage_description: none required for local notifications
+    deferred_to: null
   healthkit:
     requested: false
     rationale: Health integration is out of V1 scope.
@@ -97,7 +111,24 @@ store_sensitive_capabilities:
     implemented: false
     isolated_behind_adapter: true
     adapter: NotificationProvider
-    deferred_to: Program005
+    notes: >-
+      No push. No APNs or FCM backend, no device token is stored anywhere,
+      no campaign or analytics platform. Local reminders below are the whole
+      notification surface.
+    deferred_to: null
+  local_notifications:
+    implemented: true
+    isolated_behind_adapter: true
+    adapter: NotificationProvider
+    provider: flutter_local_notifications (device-local scheduling)
+    remote: false
+    single_reminder_id: 1
+    schedule: one daily OS recurrence, inexact on Android, calendar trigger on iOS
+    copy: fixed wellness-neutral constants; no state, identifier, free text or generated text
+    notes: >-
+      The reminder's time and zone stay on the device; nothing about it is
+      sent to the backend. Delivery under battery saving, disabled
+      notifications or force-stop is an OS decision and is not promised.
   secure_storage:
     implemented: true
     isolated_behind_adapter: true

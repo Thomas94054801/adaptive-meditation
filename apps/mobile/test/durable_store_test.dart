@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:adaptive_meditation/core/durable_store.dart';
+import 'package:adaptive_meditation/core/preferences.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
@@ -457,100 +458,280 @@ void main() {
   });
 
   group('schema', () {
-    test('a v1 database upgrades to v2 without losing data', () async {
-      // The upgrade path that matters: an installed v1 store holds the only
-      // copy of a user's queued operations, so it must migrate in place.
-      final String path = '${Directory.systemTemp.path}/p4r_v1_upgrade.db';
-      await databaseFactory.deleteDatabase(path);
+    test(
+      'a v1 database upgrades to the current schema without losing data',
+      () async {
+        // The upgrade path that matters: an installed v1 store holds the only
+        // copy of a user's queued operations, so it must migrate in place.
+        final String path = '${Directory.systemTemp.path}/p4r_v1_upgrade.db';
+        await databaseFactory.deleteDatabase(path);
 
-      final Database v1 = await databaseFactory.openDatabase(
-        path,
-        options: OpenDatabaseOptions(
-          version: 1,
-          onCreate: (Database d, int v) => DurableStore.migrate(d, 0, 1),
-        ),
-      );
-      final DurableStore old = DurableStore(database: v1);
-      await old.saveCheckpoint(
-        const Checkpoint(
+        final Database v1 = await databaseFactory.openDatabase(
+          path,
+          options: OpenDatabaseOptions(
+            version: 1,
+            onCreate: (Database d, int v) => DurableStore.migrate(d, 0, 1),
+          ),
+        );
+        final DurableStore old = DurableStore(database: v1);
+        await old.saveCheckpoint(
+          const Checkpoint(
+            sessionId: 'legacy',
+            planHash: 'p',
+            resolutionHash: 'r',
+            audioMode: 'audible',
+            runState: 'paused',
+            commandSequence: 4,
+            logicalPositionMs: 120000,
+            updatedAtMs: 900,
+          ),
+        );
+        await old.enqueue(
           sessionId: 'legacy',
-          planHash: 'p',
-          resolutionHash: 'r',
-          audioMode: 'audible',
-          runState: 'paused',
-          commandSequence: 4,
-          logicalPositionMs: 120000,
-          updatedAtMs: 900,
-        ),
-      );
-      await old.enqueue(
-        sessionId: 'legacy',
-        kind: OutboxKind.command,
-        commandId: 'legacy-c',
-        payload: <String, dynamic>{'command': 'pause'},
-      );
-      // v1 has no feedback table.
-      expect(
-        (await v1.query(
-          'sqlite_master',
-          where: 'type = ? AND name = ?',
-          whereArgs: <Object?>['table', 'feedback'],
-        )),
-        isEmpty,
-      );
-      await v1.close();
+          kind: OutboxKind.command,
+          commandId: 'legacy-c',
+          payload: <String, dynamic>{'command': 'pause'},
+        );
+        // v1 has no feedback table.
+        expect(
+          (await v1.query(
+            'sqlite_master',
+            where: 'type = ? AND name = ?',
+            whereArgs: <Object?>['table', 'feedback'],
+          )),
+          isEmpty,
+        );
+        await v1.close();
 
-      final Database v2 = await databaseFactory.openDatabase(
-        path,
+        final Database v2 = await databaseFactory.openDatabase(
+          path,
+          options: OpenDatabaseOptions(
+            version: DurableStore.schemaVersion,
+            onCreate: (Database d, int v) => DurableStore.migrate(d, 0, v),
+            onUpgrade: DurableStore.migrate,
+          ),
+        );
+        final DurableStore upgraded = DurableStore(database: v2);
+
+        // The pre-existing rows survived.
+        final Checkpoint? kept = await upgraded.checkpointFor('legacy');
+        expect(kept, isNotNull);
+        expect(kept!.logicalPositionMs, 120000);
+        expect(kept.commandSequence, 4);
+        expect(await upgraded.pending(), hasLength(1));
+
+        // And the new table works.
+        await upgraded.saveFeedback(
+          sessionId: 'legacy',
+          payload: <String, dynamic>{'after_score': 6},
+          nowMs: 1000,
+        );
+        expect(
+          (await upgraded.feedbackFor('legacy'))!.payload['after_score'],
+          6,
+        );
+        expect(await v2.getVersion(), DurableStore.schemaVersion);
+
+        await v2.close();
+        await databaseFactory.deleteDatabase(path);
+      },
+    );
+
+    test(
+      'a fresh database opens directly at the current schema with every table',
+      () async {
+        final List<Map<String, Object?>> tables = await db.query(
+          'sqlite_master',
+          columns: <String>['name'],
+          where: 'type = ?',
+          whereArgs: <Object?>['table'],
+        );
+        final Set<String> names = tables
+            .map((Map<String, Object?> r) => r['name']! as String)
+            .toSet();
+        expect(
+          names,
+          containsAll(<String>[
+            'checkpoints',
+            'outbox',
+            'deleted_guests',
+            'feedback',
+            'preferences',
+          ]),
+        );
+        expect(await db.getVersion(), DurableStore.schemaVersion);
+      },
+    );
+
+    test(
+      'a v2 database upgrades to v3 keeping checkpoint, outbox and feedback',
+      () async {
+        // Program005. The v2 store is what every Program004R install holds; the
+        // preferences table arrives beside its rows, never instead of them.
+        final String path = '${Directory.systemTemp.path}/p5_v2_upgrade.db';
+        await databaseFactory.deleteDatabase(path);
+        final Database v2 = await databaseFactory.openDatabase(
+          path,
+          options: OpenDatabaseOptions(
+            version: 2,
+            onCreate: (Database d, int v) => DurableStore.migrate(d, 0, 2),
+          ),
+        );
+        final DurableStore old = DurableStore(database: v2);
+        await old.saveCheckpoint(
+          const Checkpoint(
+            sessionId: 'kept',
+            planHash: 'p',
+            resolutionHash: 'r',
+            audioMode: 'audible',
+            runState: 'paused',
+            commandSequence: 2,
+            logicalPositionMs: 5000,
+            updatedAtMs: 900,
+          ),
+        );
+        await old.enqueue(
+          sessionId: 'kept',
+          kind: OutboxKind.command,
+          commandId: 'kept-c',
+          payload: <String, dynamic>{'command': 'pause'},
+        );
+        await old.saveFeedback(
+          sessionId: 'kept',
+          payload: <String, dynamic>{'after_score': 5},
+          nowMs: 1000,
+        );
+        expect(
+          await v2.query(
+            'sqlite_master',
+            where: 'type = ? AND name = ?',
+            whereArgs: <Object?>['table', 'preferences'],
+          ),
+          isEmpty,
+        );
+        await v2.close();
+
+        final Database v3 = await databaseFactory.openDatabase(
+          path,
+          options: OpenDatabaseOptions(
+            version: DurableStore.schemaVersion,
+            onCreate: (Database d, int v) => DurableStore.migrate(d, 0, v),
+            onUpgrade: DurableStore.migrate,
+          ),
+        );
+        final DurableStore upgraded = DurableStore(database: v3);
+        expect((await upgraded.checkpointFor('kept'))!.logicalPositionMs, 5000);
+        expect(await upgraded.pending(), hasLength(1));
+        expect((await upgraded.feedbackFor('kept'))!.payload['after_score'], 5);
+        expect(await upgraded.readPreference(adaptiveWordingKey), isNull);
+        await upgraded.writePreference(
+          adaptiveWordingKey,
+          'false',
+          nowMs: 2000,
+        );
+        expect(await upgraded.readPreference(adaptiveWordingKey), 'false');
+        expect(await v3.getVersion(), 3);
+        await v3.close();
+        await databaseFactory.deleteDatabase(path);
+      },
+    );
+  });
+
+  group('preferences (Program005)', () {
+    test('PREF-01: a value written survives a close and reopen', () async {
+      final Preferences prefs = Preferences(store, clock: () => DateTime(2026));
+      expect(await prefs.adaptiveWordingEnabled(), isTrue, reason: 'default');
+      await prefs.setAdaptiveWordingEnabled(false);
+      await db.close();
+
+      final Database reopened = await databaseFactory.openDatabase(
+        dbPath,
         options: OpenDatabaseOptions(
           version: DurableStore.schemaVersion,
           onCreate: (Database d, int v) => DurableStore.migrate(d, 0, v),
           onUpgrade: DurableStore.migrate,
         ),
       );
-      final DurableStore upgraded = DurableStore(database: v2);
-
-      // The pre-existing rows survived.
-      final Checkpoint? kept = await upgraded.checkpointFor('legacy');
-      expect(kept, isNotNull);
-      expect(kept!.logicalPositionMs, 120000);
-      expect(kept.commandSequence, 4);
-      expect(await upgraded.pending(), hasLength(1));
-
-      // And the new table works.
-      await upgraded.saveFeedback(
-        sessionId: 'legacy',
-        payload: <String, dynamic>{'after_score': 6},
-        nowMs: 1000,
-      );
-      expect((await upgraded.feedbackFor('legacy'))!.payload['after_score'], 6);
-      expect(await v2.getVersion(), 2);
-
-      await v2.close();
-      await databaseFactory.deleteDatabase(path);
+      final Preferences after = Preferences(DurableStore(database: reopened));
+      expect(await after.adaptiveWordingEnabled(), isFalse);
+      db = reopened;
     });
 
-    test('a fresh database opens directly at v2 with every table', () async {
-      final List<Map<String, Object?>> tables = await db.query(
-        'sqlite_master',
-        columns: <String>['name'],
-        where: 'type = ?',
-        whereArgs: <Object?>['table'],
+    test(
+      'PREF-02: writing twice leaves one row with the latest value',
+      () async {
+        await store.writePreference(adaptiveWordingKey, 'false', nowMs: 1);
+        await store.writePreference(adaptiveWordingKey, 'true', nowMs: 2);
+        final List<Map<String, Object?>> rows = await db.query(
+          'preferences',
+          where: 'key = ?',
+          whereArgs: <Object?>[adaptiveWordingKey],
+        );
+        expect(rows, hasLength(1));
+        expect(rows.single['value'], 'true');
+        expect(rows.single['updated_at_ms'], 2);
+      },
+    );
+
+    test('PREF-03: reminder intent round-trips as four keys', () async {
+      final Preferences prefs = Preferences(store, clock: () => DateTime(2026));
+      expect((await prefs.reminder()).enabled, isFalse);
+      expect((await prefs.reminder()).hasTime, isFalse);
+      await prefs.setReminder(
+        const ReminderPreference(
+          enabled: true,
+          hour: 7,
+          minute: 30,
+          zoneId: 'Asia/Taipei',
+        ),
       );
-      final Set<String> names = tables
-          .map((Map<String, Object?> r) => r['name']! as String)
-          .toSet();
-      expect(
-        names,
-        containsAll(<String>[
-          'checkpoints',
-          'outbox',
-          'deleted_guests',
-          'feedback',
-        ]),
-      );
-      expect(await db.getVersion(), 2);
+      final ReminderPreference read = await prefs.reminder();
+      expect(read.enabled, isTrue);
+      expect(read.hour, 7);
+      expect(read.minute, 30);
+      expect(read.zoneId, 'Asia/Taipei');
     });
+
+    test(
+      'PREF-04: forgetGuest erases preferences but keeps the deletion marker',
+      () async {
+        final Preferences prefs = Preferences(
+          store,
+          clock: () => DateTime(2026),
+        );
+        await prefs.setAdaptiveWordingEnabled(false);
+        await prefs.setReminder(
+          const ReminderPreference(enabled: true, hour: 8, minute: 0),
+        );
+        await prefs.markDeletionPending('guest-a');
+        await store.forgetGuest('guest-a', nowMs: 5000);
+        expect(
+          await prefs.adaptiveWordingEnabled(),
+          isTrue,
+          reason: 'default again',
+        );
+        expect((await prefs.reminder()).enabled, isFalse);
+        expect(await prefs.deletionPending(), 'guest-a');
+        await prefs.clearDeletionPending();
+        expect(await prefs.deletionPending(), isNull);
+        expect(await store.isForgotten('guest-a'), isTrue);
+      },
+    );
+
+    test(
+      'PREF-05: a failed write surfaces as an error, not a silent no-op',
+      () async {
+        await db.close();
+        final Preferences prefs = Preferences(
+          store,
+          clock: () => DateTime(2026),
+        );
+        await expectLater(
+          prefs.setAdaptiveWordingEnabled(false),
+          throwsA(anything),
+        );
+      },
+    );
   });
 
   test('commands and evidence do not share a dedupe namespace', () async {

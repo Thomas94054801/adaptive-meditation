@@ -9,6 +9,7 @@ from fastapi import APIRouter, HTTPException, Response, status
 
 from app.adapters.audio.registry import build_renderer
 from app.api.deps import (
+    AIProviderDep,
     CatalogDep,
     DatabaseDep,
     DbSessionDep,
@@ -25,6 +26,7 @@ from app.api.v1.schemas import (
     ExperimentVariantResponse,
     ExposureRequest,
     ExposureResponse,
+    PersonalizationResponse,
     PlaybackCommandRequest,
     PlaybackStateResponse,
     RecommendationResponse,
@@ -47,6 +49,12 @@ from app.domain.experiment.assignment import (
     get_experiment,
 )
 from app.domain.outcome.models import SessionOutcome, StateSnapshot, compute_outcome
+from app.domain.personalization import (
+    EVIDENCE_CAP,
+    Familiarity,
+    PersonalizationInvariantError,
+    personalize,
+)
 from app.domain.playback.state_machine import InvalidTransition
 from app.domain.recommendation.engine import Recommendation
 from app.domain.session.service import build_plan
@@ -66,8 +74,8 @@ from app.domain.timeline.resolution import (
 )
 from app.domain.timeline.service import (
     apply_command,
+    plan_personalized_session,
     plan_response_payload,
-    plan_session,
     recovery_point,
 )
 from app.persistence import models
@@ -244,6 +252,7 @@ def create_session(
     engine: EngineDep,
     catalog: CatalogDep,
     guest_id: OptionalGuestDep,
+    ai_provider: AIProviderDep,
 ) -> SessionResponse:
     check_ins = CheckInRepository(db)
     check_in_row = check_ins.get(payload.check_in_id)
@@ -271,22 +280,54 @@ def create_session(
     state = StateVector.from_check_in(CheckInRepository.to_domain(check_in_row))
     plan = build_plan(catalog, recommendation, state=state)
 
+    # Program005: the practice is decided; only the opening's wording is
+    # still open. One bounded count decides the tier, the preference decides
+    # whether to vary at all, and the provider (null in production) may
+    # restate the variant within the guard. All of it precedes the freeze.
+    sessions = SessionRepository(db)
+    owner = guest_id or check_in_row.guest_id
+    familiarity = (
+        Familiarity.from_count(
+            sessions.completed_count(owner, recommendation.practice_id, cap=EVIDENCE_CAP)
+        )
+        if owner is not None
+        else Familiarity.unknown()
+    )
+    try:
+        personalized = personalize(
+            catalog=catalog,
+            practice_id=recommendation.practice_id,
+            duration_minutes=recommendation.duration_minutes,
+            guidance_density=recommendation.guidance_density,
+            familiarity=familiarity,
+            adaptive_wording=payload.adaptive_wording is not False,
+            provider=ai_provider,
+        )
+    except PersonalizationInvariantError as error:
+        # A server defect, not a product state: the wording layer touched
+        # something it may not. Nothing about the prompts is logged.
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail={"code": "personalization_invariant", "message": str(error).split(":")[0]},
+        ) from error
+
     # Freeze the content before planning against it, so the session keeps
     # describing the words it actually used after the knowledge files move on.
-    planned = plan_session(catalog, recommendation, state)
+    planned = plan_personalized_session(catalog, recommendation, personalized.definition, state)
     SessionDefinitionRepository(db).ensure(planned.definition)
 
     if guest_id is not None:
         GuestRepository(db).touch(guest_id)
-    row = SessionRepository(db).create(
+    row = sessions.create(
         check_in_id=check_in_row.id,
         recommendation=recommendation,
         plan=plan,
-        guest_id=guest_id or check_in_row.guest_id,
+        guest_id=owner,
         outcome=engine.evaluate(state),
         plan_v2=plan_response_payload(planned.plan),
         plan_hash=planned.plan.plan_hash,
         definition_id=planned.definition.definition_id,
+        personalization=personalized.provenance.as_dict(),
     )
     return SessionResponse(
         id=row.id,
@@ -299,7 +340,14 @@ def create_session(
         plan=plan.as_dict(),  # type: ignore[arg-type]
         plan_v2=plan_response_payload(planned.plan),  # type: ignore[arg-type]
         run_state=row.run_state,
+        personalization=_personalization_response(row),
     )
+
+
+def _personalization_response(row: models.Session) -> PersonalizationResponse | None:
+    if not row.personalization:
+        return None
+    return PersonalizationResponse.model_validate(dict(row.personalization))
 
 
 @router.post(
@@ -451,6 +499,7 @@ def get_session(
         plan=dict(row.plan),  # type: ignore[arg-type]
         plan_v2=dict(row.plan_v2) if row.plan_v2 else None,  # type: ignore[arg-type]
         run_state=row.run_state,
+        personalization=_personalization_response(row),
     )
 
 

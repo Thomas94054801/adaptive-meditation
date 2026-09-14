@@ -26,7 +26,13 @@ abstract interface class MeditationApi {
 
   Future<CheckInReceipt> submitCheckIn(CheckIn checkIn);
 
-  Future<MeditationSession> createSession(String checkInId);
+  /// [adaptiveWording] is the stored preference (Program005). The server
+  /// treats an absent value as true; the client sends the stored value so the
+  /// applied value is frozen with the session rather than inferred.
+  Future<MeditationSession> createSession(
+    String checkInId, {
+    bool? adaptiveWording,
+  });
 
   Future<void> startSession(String sessionId);
 
@@ -124,12 +130,18 @@ class HttpMeditationApi implements MeditationApi {
   }
 
   @override
-  Future<MeditationSession> createSession(String checkInId) async {
+  Future<MeditationSession> createSession(
+    String checkInId, {
+    bool? adaptiveWording,
+  }) async {
     // The recommendation is intentionally not sent: the server re-derives it,
     // and that is the only authority over which practice runs.
     final Map<String, dynamic> body = await _postJson(
       '/v1/sessions',
-      <String, dynamic>{'check_in_id': checkInId},
+      <String, dynamic>{
+        'check_in_id': checkInId,
+        'adaptive_wording': ?adaptiveWording,
+      },
       expected: 201,
     );
     return MeditationSession.fromJson(body);
