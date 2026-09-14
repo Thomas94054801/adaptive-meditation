@@ -134,6 +134,54 @@ v1:
         inputs. Records which content was rendered, never who heard it: the
         table has no guest column. Not cleared by guest deletion, for the same
         reason as the session definition.
+    # Program005. Two preferences with two different data flows, declared
+    # separately because one leaves the device and one does not.
+    adaptive_wording_preference:
+      collected: true
+      stored: on_device_and_server
+      fields: [adaptive_wording_enabled]
+      purpose: [personalization]
+      deletable: true
+      advertising_use: false
+      notes: >-
+        One boolean, default true, kept in the app's local database. The
+        stored value is SENT with every session-create request, and the value
+        the server applied is STORED in sessions.personalization and included
+        in the data export. It is therefore collected, linked to the guest id
+        like the session it belongs to, and deleted with the guest cascade.
+    reminder_preference:
+      collected: false
+      stored: on_device_only
+      fields: [reminder_enabled, reminder_hour, reminder_minute, reminder_zone]
+      purpose: [local_reminder]
+      deletable: true
+      advertising_use: false
+      notes: >-
+        Whether a daily reminder is on, at what time, in which time zone.
+        Never sent to the backend; nothing about the reminder appears in any
+        request. Erased by the local deletion procedure, which also cancels
+        the OS schedule. Backup: on Android the app opts out of backup and
+        device transfer entirely; on iOS the database lives in Application
+        Support, which the OS includes in device backups, so a restore to a
+        new device can bring this row back. That is stated rather than denied.
+    personalization_provenance:
+      collected: true
+      derived_from: [session_history, adaptive_wording_preference]
+      fields: [personalization_policy_version, familiarity_tier, evidence_count,
+               evidence_capped, presentation_variant, adaptive_wording_enabled,
+               personalized, provider_id, ai_attempted, ai_accepted,
+               fallback_reason, reason]
+      purpose: [personalization, explainability]
+      shown_to_user: reason_and_variant_only
+      deletable: true
+      advertising_use: false
+      notes: >-
+        Written once when a session is created and never updated: which
+        opening wording was used and why. familiarity_tier is derived from a
+        bounded count of this guest's completed sessions of the same practice
+        (0 -> new, 1 or more -> returning) and infers nothing else - no trait,
+        no diagnosis, no outcome. No score of any kind is in it. Exported with
+        the session and deleted with the guest cascade.
   health:
     healthkit:
       collected: false
@@ -179,6 +227,22 @@ v1:
       enabled: planned
       safety_router_required: true
       report_output_required: true
+    presentation_rewrite:
+      # Program005: the path exists and is exercised with the null provider;
+      # no vendor is engaged and no generative model is called.
+      path_enabled: true
+      provider_engaged: none
+      external_call: false
+      request_contents: [practice_id, duration_minutes, guidance_density,
+                         stage_prompt_templates, presentation_variant]
+      request_never_contains: [guest_id, session_id, check_in_values, history,
+                               experiment_arm, feedback, notes, free_text,
+                               device_id]
+      guarded_by: envelope_and_wording_guard
+      notes: >-
+        A future provider may restate the first stage's wording only, inside
+        the guard; any other change is discarded. The null provider returns
+        the deterministic wording and is not counted as AI use.
   rights:
     deletion:
       self_service: true

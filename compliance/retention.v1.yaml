@@ -3,8 +3,8 @@
 # Short by construction. Nothing is retained "in case it is useful later": each
 # entry states what ends the retention and why the period is what it is.
 schema_version: 1
-program: Program004
-as_of: "2026-09-12"
+program: Program005
+as_of: "2026-09-14"
 
 retention:
   guest_profile:
@@ -26,6 +26,25 @@ retention:
   session_feedback:
     retained_until: user deletion, by cascade
     automatic_expiry: none
+
+  # Program005
+  personalization_provenance:
+    retained_until: user deletion, by cascade (it is a column of sessions)
+    automatic_expiry: none
+    rationale: >-
+      Written once with the session and never updated; it is the record of
+      what that session's wording was and why, and it goes with the session.
+
+  local_preferences:
+    retained_until: >-
+      local deletion (the deletion procedure clears the table) or uninstall;
+      on iOS a device backup may restore the file, on Android backup and
+      transfer are opted out
+    automatic_expiry: none
+    rationale: >-
+      Five keys on the device: the adaptive-wording switch, the reminder's
+      enabled/hour/minute/zone, and a deletion-in-progress marker that exists
+      only until the deletion completes.
 
   local_playback_checkpoint:
     retained_until: >-

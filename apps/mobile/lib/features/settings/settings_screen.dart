@@ -3,12 +3,13 @@ import 'package:flutter/material.dart';
 import '../../app/app_scope.dart';
 import '../../core/durable_store.dart';
 import '../../core/preferences.dart';
+import 'reminder_section.dart';
 
 /// The one settings screen — Program005.
 ///
-/// Nothing is asked that personalization does not use, and nothing here
-/// prompts for an OS permission on its own: opening this screen is not
-/// consent to anything.
+/// Two groups: the adaptive-wording switch and the daily reminder. Nothing is
+/// asked that personalization does not use, and nothing here prompts for an
+/// OS permission on its own: opening this screen is not consent to anything.
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
 
@@ -106,6 +107,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   ),
                 ),
               ),
+            const Divider(),
+            const ReminderSection(),
           ],
         ),
       ),

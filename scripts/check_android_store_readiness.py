@@ -50,6 +50,13 @@ PROHIBITED_PERMISSIONS = (
     "android.permission.READ_PHONE_STATE",
     "com.google.android.gms.permission.AD_ID",
     "android.permission.health",
+    # Program005: the reminder is inexact by design. An exact-alarm permission
+    # is a Play review question and a full-screen or DND-bypass one is a
+    # different product; none of them may arrive, by plugin or by hand.
+    "android.permission.SCHEDULE_EXACT_ALARM",
+    "android.permission.USE_EXACT_ALARM",
+    "android.permission.USE_FULL_SCREEN_INTENT",
+    "android.permission.ACCESS_NOTIFICATION_POLICY",
 )
 # Each entry here is a permission the code actually uses, with the reason it
 # exists. A permission that arrives through a plugin's merged manifest and has
@@ -63,6 +70,14 @@ ALLOWED_PERMISSIONS = (
     # never touched.
     "android.permission.FOREGROUND_SERVICE",
     "android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK",
+    # Program005: the local daily reminder. POST_NOTIFICATIONS is the Android
+    # 13+ runtime permission, requested only from the settings toggle's
+    # opt-in; VIBRATE comes with it from flutter_local_notifications' own
+    # manifest; RECEIVE_BOOT_COMPLETED is declared by the app so the plugin's
+    # boot receiver can re-register the schedule after a restart.
+    "android.permission.POST_NOTIFICATIONS",
+    "android.permission.VIBRATE",
+    "android.permission.RECEIVE_BOOT_COMPLETED",
     # Contributed transitively by ExoPlayer through just_audio, not by any
     # manifest in this repository and not by any plugin's own manifest - only
     # the merged manifest reveals it, which is why that audit exists.

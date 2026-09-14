@@ -10,6 +10,14 @@
          service on API 34 and above. -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK"/>
+    <!-- Program005: the daily reminder is an AlarmManager schedule, and the
+         system drops those on reboot. The plugin's boot receiver below
+         re-registers it; without this permission the receiver never runs
+         and the reminder silently stops after the first restart.
+         POST_NOTIFICATIONS and VIBRATE arrive through the plugin's own
+         manifest and are audited in the merged manifest, not declared here.
+         No exact-alarm permission: the reminder is inexact by design. -->
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED"/>
     <application
         android:label="adaptive_meditation"
         android:name="${applicationName}"
@@ -41,6 +49,20 @@
                 <category android:name="android.intent.category.LAUNCHER"/>
             </intent-filter>
         </activity>
+        <!-- Program005: flutter_local_notifications' scheduled delivery and
+             its reboot re-registration. Both are required by the plugin's
+             README for any scheduled notification; neither is exported. -->
+        <receiver android:exported="false"
+            android:name="com.dexterous.flutterlocalnotifications.ScheduledNotificationReceiver" />
+        <receiver android:exported="false"
+            android:name="com.dexterous.flutterlocalnotifications.ScheduledNotificationBootReceiver">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED"/>
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED"/>
+                <action android:name="android.intent.action.QUICKBOOT_POWERON" />
+                <action android:name="com.htc.intent.action.QUICKBOOT_POWERON"/>
+            </intent-filter>
+        </receiver>
         <!-- Don't delete the meta-data below.
              This is used by the Flutter tool to generate GeneratedPluginRegistrant.java -->
         <meta-data

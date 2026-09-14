@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 
 import '../../app/app_scope.dart';
 import '../../core/api.dart';
+import '../../core/deletion.dart';
+import '../../core/durable_store.dart';
 
 /// "Delete my meditation data".
 ///
@@ -44,18 +46,45 @@ Future<bool> showDeleteDataDialog(BuildContext context) async {
     return false;
   }
 
-  try {
-    await scope.api.deleteMyData();
-    // Rotate the local identifier too, so the next session starts as a
-    // genuinely new guest rather than writing back to the id just erased.
-    await scope.guest.rotate();
-    return true;
-  } on ApiException catch (error) {
-    if (context.mounted) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text(error.message)));
+  final DurableStore? store = scope.store;
+  if (store == null) {
+    // No local store (widget tests that assert nothing about persistence):
+    // the pre-Program005 path, server delete then rotate.
+    try {
+      await scope.api.deleteMyData();
+      await scope.guest.rotate();
+      return true;
+    } on ApiException catch (error) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(error.message)));
+      }
+      return false;
     }
-    return false;
   }
+
+  // Program005: the resumable procedure. Server delete with the current
+  // identity, local purge including preferences, reminder cancelled, and
+  // only then a fresh identity. A failed step is reported by name and left
+  // for a retry or the next start; the identity is not rotated until every
+  // step confirmed, so the retry addresses the same data.
+  final DeletionOutcome outcome = await DeletionProcedure(
+    api: scope.api,
+    store: store,
+    notifications: scope.adapters.notifications,
+    guest: scope.guest,
+  ).run();
+  if (outcome.complete) {
+    return true;
+  }
+  if (context.mounted) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        key: const Key('delete_data_failed'),
+        content: Text(outcome.message ?? 'Deletion did not complete.'),
+      ),
+    );
+  }
+  return false;
 }

@@ -159,22 +159,110 @@ class InMemorySecureStorageProvider implements SecureStorageProvider {
   Future<void> clear() async => _values.clear();
 }
 
-/// Reminders. Deferred to Program005; V1 shows no permission prompt.
+/// What the OS currently allows. `undetermined` is iOS before the first ask;
+/// `unsupported` is a platform with no implementation behind the interface.
+enum ReminderPermission { granted, denied, undetermined, unsupported }
+
+/// A wall-clock time of day. What the person chose, nothing else.
+class ReminderTime {
+  const ReminderTime({required this.hour, required this.minute});
+
+  final int hour;
+  final int minute;
+
+  @override
+  bool operator ==(Object other) =>
+      other is ReminderTime && other.hour == hour && other.minute == minute;
+
+  @override
+  int get hashCode => Object.hash(hour, minute);
+
+  @override
+  String toString() =>
+      '${hour.toString().padLeft(2, '0')}:${minute.toString().padLeft(2, '0')}';
+}
+
+/// One daily reminder: a time of day in a named IANA zone. The zone is part
+/// of the schedule because "08:00" means nothing without one.
+class ReminderSchedule {
+  const ReminderSchedule({required this.time, required this.zoneId});
+
+  final ReminderTime time;
+  final String zoneId;
+
+  @override
+  bool operator ==(Object other) =>
+      other is ReminderSchedule && other.time == time && other.zoneId == zoneId;
+
+  @override
+  int get hashCode => Object.hash(time, zoneId);
+
+  @override
+  String toString() => '$time $zoneId';
+}
+
+/// Local reminders - Program005. One daily OS recurrence at one fixed id.
+///
+/// No text parameter anywhere: the copy is a constant inside the provider,
+/// so nothing about the person can reach a lock screen by construction.
+/// Nothing here requests a permission except [requestPermission], and the
+/// only caller of that is the settings toggle's own opt-in flow.
 abstract interface class NotificationProvider {
   bool get isSupported;
 
+  /// What the OS allows right now. Below Android 13 there is no prompt and
+  /// this reads whether the app's notifications are actually enabled.
+  Future<ReminderPermission> permissionState();
+
+  /// Show the OS prompt. True when granted.
   Future<bool> requestPermission();
+
+  /// The device's IANA zone identifier, or null when it cannot be read or
+  /// is unknown to the zone database. Null means "do not schedule", never
+  /// "assume UTC".
+  Future<String?> localZoneId();
+
+  /// Replace the reminder (same id) with a daily recurrence at [schedule].
+  /// Completes with an error when the OS refused; the caller shows that.
+  Future<void> scheduleReminder(ReminderSchedule schedule);
+
+  /// What the OS actually holds, or null when nothing is pending.
+  Future<ReminderSchedule?> scheduledReminder();
+
+  /// Cancel the reminder. A no-op when nothing is scheduled.
+  Future<void> cancelReminder();
 }
 
+/// A platform with no reminder implementation, and the widget-test default.
+///
+/// Deliberately never calls a platform API. The production-wiring audit
+/// refuses it on Android and iOS, so it cannot become the shipped provider by
+/// omission.
 class DisabledNotificationProvider implements NotificationProvider {
   const DisabledNotificationProvider();
 
   @override
   bool get isSupported => false;
 
+  @override
+  Future<ReminderPermission> permissionState() async =>
+      ReminderPermission.unsupported;
+
   /// Always false, and deliberately never calls a platform permission API.
   @override
   Future<bool> requestPermission() async => false;
+
+  @override
+  Future<String?> localZoneId() async => null;
+
+  @override
+  Future<void> scheduleReminder(ReminderSchedule schedule) async {}
+
+  @override
+  Future<ReminderSchedule?> scheduledReminder() async => null;
+
+  @override
+  Future<void> cancelReminder() async {}
 }
 
 /// HealthKit / Health Connect / Garmin. Deferred to Program008.
