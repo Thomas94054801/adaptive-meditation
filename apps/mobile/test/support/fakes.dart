@@ -253,10 +253,21 @@ class FakeMeditationApi implements MeditationApi {
     return CheckInReceipt(id: 'check-in-1', checkIn: checkIn);
   }
 
+  /// The adaptive_wording value each createSession call carried (null when
+  /// the client sent none), so a test can assert what was transported.
+  final List<bool?> createSessionAdaptiveWording = <bool?>[];
+
+  /// Provenance handed back with the created session, when a test sets one.
+  Personalization? personalization;
+
   @override
-  Future<MeditationSession> createSession(String checkInId) async {
+  Future<MeditationSession> createSession(
+    String checkInId, {
+    bool? adaptiveWording,
+  }) async {
     _maybeFail();
     createSessionCalls++;
+    createSessionAdaptiveWording.add(adaptiveWording);
     return MeditationSession(
       id: 'session-1',
       checkInId: checkInId,
@@ -264,6 +275,7 @@ class FakeMeditationApi implements MeditationApi {
       recommendation: recommendation,
       plan: plan,
       planV2: withTypedPlan ? typedPlan : null,
+      personalization: personalization,
     );
   }
 

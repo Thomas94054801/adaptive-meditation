@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../app/app_scope.dart';
 import '../../core/api.dart';
 import '../../core/models.dart';
+import '../settings/settings_screen.dart';
 import 'delete_data_dialog.dart';
 import 'export_data_sheet.dart';
 
@@ -77,6 +78,16 @@ class _HistoryScreenState extends State<HistoryScreen> {
       appBar: AppBar(
         title: const Text('Your sessions'),
         actions: <Widget>[
+          IconButton(
+            key: const Key('history_settings'),
+            tooltip: 'Settings',
+            icon: const Icon(Icons.tune),
+            onPressed: () => Navigator.of(context).push<void>(
+              MaterialPageRoute<void>(
+                builder: (BuildContext context) => const SettingsScreen(),
+              ),
+            ),
+          ),
           IconButton(
             key: const Key('history_export_data'),
             tooltip: 'Export my meditation data',
