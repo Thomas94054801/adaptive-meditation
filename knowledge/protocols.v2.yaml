@@ -32,6 +32,11 @@ protocols:
           Settle into a position you can hold for ${duration_minutes} minutes.
           Let your shoulders drop and your hands rest.
         silence_after_seconds: 5
+        # Program005: what a returning guest hears instead. Presentation
+        # only; same placeholders, no more words than the canonical text.
+        returning_prompt_template: >-
+          Welcome back. Settle in for ${duration_minutes} minutes and let
+          the shoulders drop.
       - id: contact
         intent: notice_natural_breath
         min_seconds: 40
@@ -74,6 +79,11 @@ protocols:
           For the next ${duration_minutes} minutes, let attention come down out
           of the head. Feel the points where your body meets the floor or chair.
         silence_after_seconds: 5
+        # Program005: what a returning guest hears instead. Presentation
+        # only; same placeholders, no more words than the canonical text.
+        returning_prompt_template: >-
+          Welcome back. For ${duration_minutes} minutes, let attention come
+          down into the body and find where it meets the floor or chair.
       - id: settle
         intent: release_obvious_holding
         min_seconds: 30
@@ -125,6 +135,11 @@ protocols:
           Take ${duration_minutes} minutes here. Sit in a way that is alert
           and comfortable, and let the breath settle on its own.
         silence_after_seconds: 5
+        # Program005: what a returning guest hears instead. Presentation
+        # only; same placeholders, no more words than the canonical text.
+        returning_prompt_template: >-
+          Welcome back. Take ${duration_minutes} minutes here, alert and
+          comfortable, and let the breath settle.
       - id: notice_tone
         intent: recognize_pleasant_unpleasant_neutral
         min_seconds: 50
@@ -166,6 +181,11 @@ protocols:
           Settle for ${duration_minutes} minutes. Let the body be still and
           let the breath find its own rhythm.
         silence_after_seconds: 5
+        # Program005: what a returning guest hears instead. Presentation
+        # only; same placeholders, no more words than the canonical text.
+        returning_prompt_template: >-
+          Welcome back. Settle for ${duration_minutes} minutes and let the
+          breath find its rhythm.
       - id: notice_thinking
         intent: see_thought_as_event
         min_seconds: 50
@@ -207,6 +227,11 @@ protocols:
           Take ${duration_minutes} minutes. Let the face and shoulders soften
           and rest a hand somewhere comfortable if you like.
         silence_after_seconds: 5
+        # Program005: what a returning guest hears instead. Presentation
+        # only; same placeholders, no more words than the canonical text.
+        returning_prompt_template: >-
+          Welcome back. Take ${duration_minutes} minutes and let the face and
+          shoulders soften.
       - id: toward_self
         intent: offer_goodwill_to_self
         min_seconds: 40
@@ -257,6 +282,11 @@ protocols:
           Sit upright for ${duration_minutes} minutes. Let the eyes be soft,
           open or closed.
         silence_after_seconds: 5
+        # Program005: what a returning guest hears instead. Presentation
+        # only; same placeholders, no more words than the canonical text.
+        returning_prompt_template: >-
+          Welcome back. Sit upright for ${duration_minutes} minutes, eyes
+          soft.
       - id: open_field
         intent: include_whole_field
         min_seconds: 50
@@ -298,6 +328,11 @@ protocols:
           Stand for a moment before you set off. Feel your feet on the ground
           and let your arms hang. You have ${duration_minutes} minutes.
         silence_after_seconds: 5
+        # Program005: what a returning guest hears instead. Presentation
+        # only; same placeholders, no more words than the canonical text.
+        returning_prompt_template: >-
+          Welcome back. Stand for a moment, feel your feet on the ground,
+          and take your ${duration_minutes} minutes.
       - id: set_pace
         intent: find_a_slower_pace
         min_seconds: 40

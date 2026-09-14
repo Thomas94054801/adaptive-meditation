@@ -7,6 +7,7 @@ application and shared read-only. It does not grow with request volume.
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
@@ -126,6 +127,7 @@ def load_catalog(knowledge_dir: Path, version: int = DEFAULT_KNOWLEDGE_VERSION) 
             assert_public_language(
                 stage.prompt_template, where=f"protocol {protocol.id}.{stage.id}.prompt_template"
             )
+        _validate_returning_templates(protocol)
         protocols[protocol.practice_id] = protocol
 
     missing = sorted(set(practices) - set(protocols))
@@ -179,6 +181,50 @@ def _validate_protocol_renderability(protocol: Protocol) -> None:
                 f"protocol {protocol.id!r} declares {minutes} min but its stage maximums "
                 f"only reach {protocol.max_total_seconds}s"
             )
+
+
+_PLACEHOLDER = re.compile(r"\$\{[A-Za-z_][A-Za-z0-9_]*\}")
+
+
+def placeholders(text: str) -> frozenset[str]:
+    """The ``${name}`` substitutions a template asks for."""
+    return frozenset(_PLACEHOLDER.findall(text))
+
+
+def validate_returning_template(canonical: str, returning: str, *, where: str) -> None:
+    """Program005 policy 1 - what a returning-guest opening may be.
+
+    Same public-language rules as every prompt, the same placeholder set (so
+    the planner substitutes the same values), and no more words than the
+    canonical text: the returning variant drops orientation a person has
+    already heard; it never adds instruction. None of this is a claim of
+    semantic equivalence - that is a content review, done by reading.
+    """
+    assert_public_language(returning, where=where)
+    if placeholders(returning) != placeholders(canonical):
+        raise KnowledgeValidationError(
+            f"{where}: placeholders {sorted(placeholders(returning))} differ from the "
+            f"canonical template's {sorted(placeholders(canonical))}"
+        )
+    if len(returning.split()) > len(canonical.split()):
+        raise KnowledgeValidationError(
+            f"{where}: {len(returning.split())} words exceeds the canonical "
+            f"{len(canonical.split())}"
+        )
+
+
+def _validate_returning_templates(protocol: Protocol) -> None:
+    for index, stage in enumerate(protocol.stages):
+        if stage.returning_prompt_template is None:
+            continue
+        where = f"protocol {protocol.id}.{stage.id}.returning_prompt_template"
+        if index != 0:
+            # Policy 1 varies the orientation only. A later stage is the
+            # practice itself, and the practice does not change with familiarity.
+            raise KnowledgeValidationError(f"{where}: only the first stage may vary")
+        validate_returning_template(
+            stage.prompt_template, stage.returning_prompt_template, where=where
+        )
 
 
 @lru_cache(maxsize=8)

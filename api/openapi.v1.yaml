@@ -354,6 +354,78 @@ components:
       - ai_provider_configured
       title: HealthResponse
       type: object
+    PersonalizationResponse:
+      additionalProperties: false
+      description: 'What was personalized, why, under which policy, and whether AI ran.
+
+
+        Frozen with the session. No outcome field and no model reasoning is here,
+
+        and none is added.'
+      properties:
+        adaptive_wording_enabled:
+          title: Adaptive Wording Enabled
+          type: boolean
+        ai_accepted:
+          title: Ai Accepted
+          type: boolean
+        ai_attempted:
+          title: Ai Attempted
+          type: boolean
+        evidence_capped:
+          title: Evidence Capped
+          type: boolean
+        evidence_count:
+          minimum: 0.0
+          title: Evidence Count
+          type: integer
+        fallback_reason:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Fallback Reason
+        familiarity_tier:
+          enum:
+          - new
+          - returning
+          title: Familiarity Tier
+          type: string
+        personalization_policy_version:
+          title: Personalization Policy Version
+          type: string
+        personalized:
+          title: Personalized
+          type: boolean
+        presentation_variant:
+          enum:
+          - canonical
+          - returning
+          title: Presentation Variant
+          type: string
+        provider_id:
+          title: Provider Id
+          type: string
+        reason:
+          title: Reason
+          type: string
+        schema_version:
+          title: Schema Version
+          type: integer
+      required:
+      - schema_version
+      - personalization_policy_version
+      - familiarity_tier
+      - evidence_count
+      - evidence_capped
+      - presentation_variant
+      - adaptive_wording_enabled
+      - personalized
+      - provider_id
+      - ai_attempted
+      - ai_accepted
+      - reason
+      title: PersonalizationResponse
+      type: object
     PlaybackCommandRequest:
       additionalProperties: false
       description: 'A state-changing playback command.
@@ -778,6 +850,11 @@ components:
 
         sending one here; a mismatch is a 409, not a silent acceptance.'
       properties:
+        adaptive_wording:
+          anyOf:
+          - type: boolean
+          - type: 'null'
+          title: Adaptive Wording
         check_in_id:
           format: uuid
           title: Check In Id
@@ -1095,6 +1172,10 @@ components:
           format: uuid
           title: Id
           type: string
+        personalization:
+          anyOf:
+          - $ref: '#/components/schemas/PersonalizationResponse'
+          - type: 'null'
         plan:
           $ref: '#/components/schemas/SessionPlanResponse'
         plan_v2:

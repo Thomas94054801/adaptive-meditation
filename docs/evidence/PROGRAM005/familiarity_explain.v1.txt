@@ -1,0 +1,39 @@
+measured_at: 2026-09-14T13:01:35Z
+
+PostgreSQL 16.15 (Homebrew)
+guest rows=10000 matches=3 abandoned_target=200 -> completed_count=3
+
+SELECT count(*) AS count_1 
+FROM (SELECT 1 AS anon_1 
+FROM sessions 
+WHERE sessions.guest_id = '0d1c420a-4327-4a3b-a2b2-33b2044beb06' AND sessions.status = 'completed' AND CAST((sessions.recommendation ->> 'practice_id') AS VARCHAR) = 'breath_awareness' 
+ LIMIT 100) AS bounded
+
+-- with ix_sessions_familiarity
+Aggregate  (cost=196.38..196.39 rows=1 width=8) (actual time=0.005..0.005 rows=1 loops=1)
+  Buffers: shared hit=3
+  ->  Limit  (cost=6.78..195.13 rows=100 width=4) (actual time=0.003..0.004 rows=3 loops=1)
+        Buffers: shared hit=3
+        ->  Bitmap Heap Scan on sessions  (cost=6.78..375.95 rows=196 width=4) (actual time=0.003..0.004 rows=3 loops=1)
+              Recheck Cond: ((guest_id = '0d1c420a-4327-4a3b-a2b2-33b2044beb06'::uuid) AND ((status)::text = 'completed'::text) AND ((recommendation ->> 'practice_id'::text) = 'breath_awareness'::text))
+              Heap Blocks: exact=1
+              Buffers: shared hit=3
+              ->  Bitmap Index Scan on ix_sessions_familiarity  (cost=0.00..6.74 rows=196 width=0) (actual time=0.003..0.003 rows=3 loops=1)
+                    Index Cond: ((guest_id = '0d1c420a-4327-4a3b-a2b2-33b2044beb06'::uuid) AND ((status)::text = 'completed'::text) AND ((recommendation ->> 'practice_id'::text) = 'breath_awareness'::text))
+                    Buffers: shared hit=2
+Planning Time: 0.031 ms
+Execution Time: 0.012 ms
+
+-- without ix_sessions_familiarity (rolled back)
+Aggregate  (cost=682.65..682.66 rows=1 width=8) (actual time=1.567..1.567 rows=1 loops=1)
+  Buffers: shared hit=474
+  ->  Limit  (cost=0.00..682.04 rows=49 width=4) (actual time=0.045..1.567 rows=3 loops=1)
+        Buffers: shared hit=474
+        ->  Seq Scan on sessions  (cost=0.00..682.04 rows=49 width=4) (actual time=0.045..1.566 rows=3 loops=1)
+              Filter: ((guest_id = '0d1c420a-4327-4a3b-a2b2-33b2044beb06'::uuid) AND ((status)::text = 'completed'::text) AND ((recommendation ->> 'practice_id'::text) = 'breath_awareness'::text))
+              Rows Removed by Filter: 10399
+              Buffers: shared hit=474
+Planning:
+  Buffers: shared hit=60
+Planning Time: 0.180 ms
+Execution Time: 1.572 ms

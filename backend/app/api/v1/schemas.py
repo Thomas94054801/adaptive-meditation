@@ -104,6 +104,34 @@ class SessionCreateRequest(BaseModel):
 
     check_in_id: uuid.UUID
     recommendation: Recommendation | None = None
+    # Program005: the guest's adaptive-wording preference. Absent means true,
+    # the default preference, so a client that predates the field is
+    # unchanged. False freezes canonical wording and skips the provider.
+    adaptive_wording: bool | None = None
+
+
+class PersonalizationResponse(BaseModel):
+    """What was personalized, why, under which policy, and whether AI ran.
+
+    Frozen with the session. No outcome field and no model reasoning is here,
+    and none is added.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    schema_version: int
+    personalization_policy_version: str
+    familiarity_tier: Literal["new", "returning"]
+    evidence_count: int = Field(ge=0)
+    evidence_capped: bool
+    presentation_variant: Literal["canonical", "returning"]
+    adaptive_wording_enabled: bool
+    personalized: bool
+    provider_id: str
+    ai_attempted: bool
+    ai_accepted: bool
+    fallback_reason: str | None = None
+    reason: str
 
 
 class SessionResponse(BaseModel):
@@ -119,6 +147,9 @@ class SessionResponse(BaseModel):
     plan: SessionPlanResponse
     plan_v2: SessionPlanV2Response | None = None
     run_state: str | None = None
+    # Null for a session created before Program005; the client shows it as
+    # not personalized rather than guessing.
+    personalization: PersonalizationResponse | None = None
 
 
 class TimelineSegmentResponse(BaseModel):

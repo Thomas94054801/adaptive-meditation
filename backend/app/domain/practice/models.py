@@ -116,6 +116,14 @@ class ProtocolStage(BaseModel):
     prompt_template: str = Field(min_length=1, max_length=600)
     silence_after_seconds: int = Field(ge=0)
 
+    # Program005: the wording a returning guest hears instead of
+    # prompt_template. Presentation only - the stage's intent, timing and
+    # silence are the same whichever text is spoken. The catalog restricts it
+    # to a protocol's first stage and to no more words than the canonical text
+    # (see validate_returning_template), so a returning opening can only be
+    # shorter, never a different practice.
+    returning_prompt_template: str | None = Field(default=None, min_length=1, max_length=600)
+
     # State conditions that lengthen this stage (SDD 2.16). Empty means the
     # stage takes its plain proportional share.
     adaptation: tuple[StateCondition, ...] = ()

@@ -101,10 +101,22 @@ def test_null_tts_produces_no_audio() -> None:
 
 
 def test_personalized_wording_is_accepted_when_the_envelope_holds() -> None:
-    outcome = apply_personalization(REQUEST, result(stage_prompts=("a", "b", "c")))
+    # Program005 policy 1: the provider may restate the first stage only. A
+    # rewrite confined to it, keeping the envelope, is accepted as a whole.
+    outcome = apply_personalization(REQUEST, result(stage_prompts=("a", "two", "three")))
     assert outcome.personalized is True
-    assert outcome.stage_prompts == ("a", "b", "c")
+    assert outcome.stage_prompts == ("a", "two", "three")
     assert outcome.violations == ()
+
+
+def test_rewriting_a_later_stage_is_rejected_as_a_whole() -> None:
+    # Before Program005 this was accepted: the envelope held. It is now a
+    # wording violation, and the deterministic text survives for every stage,
+    # including the first one the provider was allowed to change.
+    outcome = apply_personalization(REQUEST, result(stage_prompts=("a", "b", "c")))
+    assert outcome.personalized is False
+    assert outcome.violations == ("protected_stage[1]", "protected_stage[2]")
+    assert outcome.stage_prompts == REQUEST.stage_prompts
 
 
 @pytest.mark.parametrize(

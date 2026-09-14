@@ -50,6 +50,23 @@ def plan_session(
     return PlannedSession(definition=definition, plan=plan)
 
 
+def plan_personalized_session(
+    catalog: KnowledgeCatalog,
+    recommendation: Recommendation,
+    definition: SessionDefinition,
+    state: StateVector | None = None,
+) -> PlannedSession:
+    """Plan against a definition that was already chosen and frozen.
+
+    Program005 picks the definition (canonical or returning wording) before
+    planning; the planner itself is the same one ``plan_session`` uses, so a
+    personalized session is planned exactly like any other.
+    """
+    protocol = catalog.protocol_for(recommendation.practice_id)
+    plan = build_plan(recommendation, definition, protocol, state)
+    return PlannedSession(definition=definition, plan=plan)
+
+
 def plan_response_payload(plan: SessionPlanV2) -> dict[str, Any]:
     """Wire form. Includes the derived timing bounds the client needs to schedule."""
     return {

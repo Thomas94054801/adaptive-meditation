@@ -203,6 +203,7 @@ class SessionRepository:
         plan_v2: dict[str, object] | None = None,
         plan_hash: str | None = None,
         definition_id: str | None = None,
+        personalization: dict[str, object] | None = None,
     ) -> models.Session:
         row = models.Session(
             id=uuid.uuid4(),
@@ -221,6 +222,7 @@ class SessionRepository:
             plan_v2=plan_v2,
             plan_hash=plan_hash,
             definition_id=definition_id,
+            personalization=personalization,
             run_state="created",
             elapsed_ms=0,
             command_sequence=0,
@@ -268,6 +270,26 @@ class SessionRepository:
 
     def get(self, session_id: uuid.UUID) -> models.Session | None:
         return self._session.get(models.Session, session_id)
+
+    def completed_count(self, guest_id: uuid.UUID, practice_id: str, *, cap: int) -> int:
+        """Completed sessions of one practice for one guest, saturating at ``cap``.
+
+        One statement: count over a LIMITed subquery, so the database stops
+        producing matches at the cap and never hands rows to Python. The
+        predicate is the one ``ix_sessions_familiarity`` covers, term for term.
+        A result equal to ``cap`` means "at least cap", not a total.
+        """
+        matches = (
+            select(sa.literal(1))
+            .where(
+                models.Session.guest_id == guest_id,
+                models.Session.status == "completed",
+                models.Session.recommendation["practice_id"].as_string() == practice_id,
+            )
+            .limit(cap)
+            .subquery("bounded")
+        )
+        return int(self._session.execute(select(sa.func.count()).select_from(matches)).scalar_one())
 
     def mark_started(self, row: models.Session) -> models.Session:
         if row.status == "created":
