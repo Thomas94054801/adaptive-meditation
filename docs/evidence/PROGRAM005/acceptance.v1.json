@@ -1,0 +1,471 @@
+{
+  "task": "PROGRAM005_SDD_AMEND_AND_IMPLEMENT",
+  "schema_version": 1,
+  "note": "Device-independent evidence only. CI is the sole axis with a result; a stub that records calls proves ordering, never delivery, and no native or human result is claimed.",
+  "baseline_main": "367736a2d4269ac1a951d82e5fb0233d1d59238f",
+  "sdd_amendment_sha": "7061cf930d71b53ca4e07c57cec9bd85881969ea",
+  "implementation_shas": {
+    "slice_a": "c320efe",
+    "slice_b": "26ce9b7",
+    "slice_c": "31c0a4c199b65ea21233014a77f86f0191b550f5"
+  },
+  "candidate": {
+    "sha": "31c0a4c199b65ea21233014a77f86f0191b550f5",
+    "branch": "program005/personalization-sdd",
+    "pr": 6,
+    "base": "main"
+  },
+  "ci": {
+    "push_run": 34850883791,
+    "pull_request_run": 34850887702,
+    "conclusion": "success",
+    "jobs": 6,
+    "backend_tests": 606,
+    "flutter_tests": 272,
+    "note": "574 + 32 backend, 217 + 55 Flutter over the Program004R baseline"
+  },
+  "performance_guard": {
+    "environment": "github-hosted-ci",
+    "mode": "ci-guard",
+    "paths": {
+      "recommendation API (no guest)": "1.350ms/150ms",
+      "recommendation API (with guest)": "2.640ms/150ms",
+      "history API": "3.377ms/300ms",
+      "session create (plan v1 + v2)": "9.050ms/250ms",
+      "prepare (render manifest)": "4.906ms/250ms",
+      "event batch ingest (20)": "7.076ms/120ms",
+      "playback state read": "3.298ms/120ms",
+      "familiarity context query": "1.160ms/50ms"
+    },
+    "note": "p95 on the hosted runner, reported as a regression guard only; never as OCI performance. Product budgets unchanged; the 50 ms familiarity budget is a controlled-environment design target."
+  },
+  "familiarity_query": {
+    "index": "ix_sessions_familiarity (guest_id, status, (recommendation ->> 'practice_id'))",
+    "migration": "0008",
+    "explain": "docs/evidence/PROGRAM005/familiarity_explain.v1.txt",
+    "summary": "10,000-row guest (3 matches, 200 abandoned target, rest other practices) on PostgreSQL 16.15: Bitmap Index Scan on ix_sessions_familiarity, 3 shared buffers, 0.014 ms; with the index dropped in a rolled-back transaction: Seq Scan, 10,399 rows removed by filter, 474 buffers, 1.57 ms. The planner is not forced.",
+    "semantics": "evidence_count = min(actual, 100); 100 means at least 100, never a total; tier unchanged either side of the cap",
+    "sqlite": "0008's DDL and predicate verified on SQLite 3.53 in isolation; the migration chain on SQLite fails at 0007 (ALTER ADD CONSTRAINT) at the baseline, unrelated to Program005 and not patched here."
+  },
+  "content": {
+    "definition_schema_version": 1,
+    "returning_templates": 7,
+    "rule": "first stage only, same placeholders, public-language guard, <= canonical words",
+    "baseline_fixture": "backend/tests/fixtures/definition_baseline.v1.json (7 definitions, 35 plans, generated at 367736a2 by the old code)",
+    "human_review": "the seven returning lines were read sentence by sentence for posture, walking and practice meaning; not a proof of semantic equivalence or medical safety"
+  },
+  "ai": {
+    "provider": "null",
+    "external_call": false,
+    "vendor_adapter": false,
+    "attempts_per_session": 1,
+    "fallback_reasons": [
+      "provider_absent",
+      "adaptive_wording_disabled",
+      "provider_error",
+      "provider_timeout",
+      "malformed_output",
+      "envelope_violation",
+      "wording_rejected"
+    ]
+  },
+  "dependencies": {
+    "direct_added": {
+      "flutter_local_notifications": "22.3.1",
+      "timezone": "0.11.1",
+      "flutter_timezone": "5.1.0"
+    },
+    "transitive_added": {
+      "flutter_local_notifications_platform_interface": "12.2.0",
+      "flutter_local_notifications_linux": "8.0.1",
+      "flutter_local_notifications_windows": "3.1.1",
+      "flutter_local_notifications_web": "1.0.0",
+      "dbus": "0.7.15",
+      "equatable": "2.1.0",
+      "petitparser": "7.0.2",
+      "xml": "7.0.1"
+    },
+    "existing_packages_changed": 0,
+    "native_adjustments": [
+      "isCoreLibraryDesugaringEnabled + desugar_jdk_libs 2.1.4",
+      "RECEIVE_BOOT_COMPLETED",
+      "ScheduledNotificationReceiver + ScheduledNotificationBootReceiver",
+      "res/drawable/ic_reminder.xml + res/raw/keep.xml",
+      "UNUserNotificationCenter delegate in AppDelegate"
+    ]
+  },
+  "android_bundle_size": {
+    "before": {
+      "sha": "8722589",
+      "run_id": 34759061662,
+      "reported": "53.8MB (Program004R closeout record)"
+    },
+    "after": {
+      "sha": "31c0a4c199b65ea21233014a77f86f0191b550f5",
+      "run_id": 34850883791,
+      "reported": "55.4MB"
+    },
+    "delta_reported": "approximately 1.6 MB",
+    "measured_how": "flutter build appbundle --release as reported by the Flutter tool in the Android job",
+    "apk_size": "NOT_RUN",
+    "installed_footprint": "NOT_RUN"
+  },
+  "ios_build": {
+    "run_id": 34850883791,
+    "reported": "Runner.app 24.5MB, --no-codesign",
+    "device": "NOT_RUN"
+  },
+  "reminder": {
+    "id": 1,
+    "recurrence": "zonedSchedule + DateTimeComponents.time, AndroidScheduleMode.inexactAllowWhileIdle",
+    "zone": "FlutterTimezone identifier resolved via tz.getLocation; unknown -> not scheduled, never UTC",
+    "permission_timing": "only from the settings toggle's opt-in sheet; every iOS init flag false",
+    "expiry": "none by the app",
+    "dst": {
+      "first_instant": "timezone package: gap 02:30->03:30 EDT, overlap 01:30->first instant (pinned by test)",
+      "android_recurrence": "ZonedDateTime.of in the zone, read in plugin source, not measured",
+      "ios_recurrence": "NOT_RUN"
+    }
+  },
+  "deletion": {
+    "procedure": "mark pending + intent off -> cancel (non-fatal) -> DELETE with original identity -> forgetGuest -> retry cancel -> rotate -> clear marker",
+    "resume": "at start when the marker exists",
+    "fact_repaired": "forgetGuest was never called by the deletion dialog before Program005"
+  },
+  "disclosure": {
+    "reminder_preference": "device only, never sent",
+    "adaptive_wording_preference": "sent with session create, stored in sessions.personalization, exported",
+    "backup": "Android: allowBackup=false and every domain excluded; iOS: Application Support is included in device backups, so a restore can bring the preferences file back"
+  },
+  "budget": {
+    "slices": 3,
+    "source_unique_files": 33,
+    "source_estimate": 24,
+    "test_unique_files": 17,
+    "test_estimate": 12,
+    "deviation": "Over on both counts. Source: 12 new files carry the feature (personalization.py, seed.py, preferences/reminders/deletion, settings_screen/reminder_section, local_notification_provider, reminder_copy, plus the provider interface and store) and 21 are modifications of existing files the three slices had to reach - request/response schemas, routes, export, deps/main, catalog/models, the planner service, the API client, the session model, four screens, bootstrap and the app shell. Tests: three shared support files and the baseline fixture are counted; the rest are one file per acceptance group. No file was added to reach a count and none was merged to avoid one.",
+    "endpoints_added": 0,
+    "server_migrations": 1,
+    "local_migrations": 1,
+    "settings_screens": 1,
+    "ci_jobs_added": 0,
+    "services_queues_caches_workers_vendor_adapters": 0
+  },
+  "readiness": {
+    "axes": {
+      "CI": "PASS",
+      "NATIVE_INTEGRATION": "NOT_RUN",
+      "ANDROID_DEVICE": "NOT_RUN",
+      "IOS_DEVICE": "NOT_RUN",
+      "HUMAN_LISTENING": "NOT_RUN"
+    },
+    "verdicts": {
+      "CODE_MERGE_READINESS": "READY",
+      "STORE_RELEASE_READINESS": "BLOCKED"
+    },
+    "rule": "NOT_RUN is the absence of a result and blocks exactly as a FAIL does. Reminder delivery, reboot re-registration, the plugin's DST recurrence and the returning opening as heard are device and human facts with no result here."
+  },
+  "cases": [
+    {
+      "case": "PERS-01",
+      "behaviour": "first-time guest receives the canonical opening; provenance new/canonical/not personalized",
+      "tiers": [
+        "CI"
+      ],
+      "result": "PASS",
+      "evidence": "backend/tests/test_personalization.py::test_pers01_first_time_guest_gets_the_canonical_opening"
+    },
+    {
+      "case": "PERS-02",
+      "behaviour": "one completed session of the practice -> returning opening, personalized=true, provider null, definition_id differs",
+      "tiers": [
+        "CI"
+      ],
+      "result": "PASS",
+      "evidence": "backend/tests/test_personalization.py::test_pers02_returning_guest_hears_the_returning_opening"
+    },
+    {
+      "case": "PERS-03",
+      "behaviour": "practice_id identical across new/returning and adaptive_wording on/off",
+      "tiers": [
+        "CI"
+      ],
+      "result": "PASS",
+      "evidence": "backend/tests/test_personalization.py::test_pers03_04_practice_and_duration_identical_across_tiers_and_preference"
+    },
+    {
+      "case": "PERS-04",
+      "behaviour": "duration and target_total_ms identical",
+      "tiers": [
+        "CI"
+      ],
+      "result": "PASS",
+      "evidence": "backend/tests/test_personalization.py::test_pers03_04_practice_and_duration_identical_across_tiers_and_preference"
+    },
+    {
+      "case": "PERS-05",
+      "behaviour": "7 practices x 5 durations: stage/bell/marker structure, every non-first speech text, all later silences byte-equal; opening silence and floor >= canonical",
+      "tiers": [
+        "CI"
+      ],
+      "result": "PASS",
+      "evidence": "backend/tests/test_personalization.py::test_pers05_seven_practices_five_durations_only_the_opening_differs (35 pairs)"
+    },
+    {
+      "case": "PERS-06",
+      "behaviour": "count reproduces the tier: 0 / 1 / 150 (saturates at 100), other guest and other practice isolated, abandoned excluded; index present after migration",
+      "tiers": [
+        "CI"
+      ],
+      "result": "PASS",
+      "evidence": "backend/tests/test_personalization.py::test_pers06_* and ::test_the_familiarity_index_exists_after_migration; docs/evidence/PROGRAM005/familiarity_explain.v1.txt",
+      "note": "PostgreSQL in CI (TEST_DATABASE_URL); the SQLite chain is broken since 0007's ALTER ADD CONSTRAINT at the baseline, not by 0008, whose DDL was verified on SQLite 3.53 separately."
+    },
+    {
+      "case": "PERS-07",
+      "behaviour": "provenance returned on create and GET, exported under sessions[].personalization, exact key set",
+      "tiers": [
+        "CI"
+      ],
+      "result": "PASS",
+      "evidence": "backend/tests/test_personalization.py::test_pers07_provenance_is_frozen_returned_and_exported"
+    },
+    {
+      "case": "PERS-08",
+      "behaviour": "two later completions and a preference flip leave the first session's personalization/plan/recommendation identical",
+      "tiers": [
+        "CI"
+      ],
+      "result": "PASS",
+      "evidence": "backend/tests/test_personalization.py::test_pers08_history_growth_does_not_rewrite_an_old_session"
+    },
+    {
+      "case": "PERS-09",
+      "behaviour": "adaptive_wording=false: provider never invoked (spy), canonical, fallback adaptive_wording_disabled",
+      "tiers": [
+        "CI"
+      ],
+      "result": "PASS",
+      "evidence": "backend/tests/test_personalization.py::test_pers09_adaptive_wording_off_never_calls_the_provider"
+    },
+    {
+      "case": "PERS-10",
+      "behaviour": "AI_PROVIDER=null, no key: valid session, provider_absent, ai_attempted=false",
+      "tiers": [
+        "CI"
+      ],
+      "result": "PASS",
+      "evidence": "backend/tests/test_personalization.py::test_pers10_null_provider_is_the_production_path"
+    },
+    {
+      "case": "PERS-11",
+      "behaviour": "practice/duration/stage-count change -> envelope_violation; later-stage change, missing placeholder, blank, >600 chars, medical term, non-string -> wording_rejected; no generated definition row",
+      "tiers": [
+        "CI"
+      ],
+      "result": "PASS",
+      "evidence": "backend/tests/test_personalization.py::test_pers11_violations_keep_the_deterministic_wording (9 cases)"
+    },
+    {
+      "case": "PERS-12",
+      "behaviour": "provider raises / raises TimeoutError / returns a dict -> session created, exactly one attempt, provider_error / provider_timeout / malformed_output",
+      "tiers": [
+        "CI"
+      ],
+      "result": "PASS",
+      "evidence": "backend/tests/test_personalization.py::test_pers12_provider_failure_cannot_prevent_meditation",
+      "note": "provider_timeout is error handling for a raised TimeoutError; no ability to abort an external call exists or is claimed."
+    },
+    {
+      "case": "PERS-13",
+      "behaviour": "schema-1 fixture generated at 367736a2 by the old code: canonical bytes, sha256, definition_id and 35 plan hashes reproduce without drift",
+      "tiers": [
+        "CI"
+      ],
+      "result": "PASS",
+      "evidence": "backend/tests/test_personalization.py::test_pers13_schema1_baseline_round_trips_without_drift; backend/tests/fixtures/definition_baseline.v1.json"
+    },
+    {
+      "case": "PERS-14",
+      "behaviour": "serialised provider request carries only practice_id, duration_minutes, guidance_density, stage_prompts, presentation_variant; no forbidden field, no guest id",
+      "tiers": [
+        "CI"
+      ],
+      "result": "PASS",
+      "evidence": "backend/tests/test_personalization.py::test_the_request_carries_no_identity_and_no_history"
+    },
+    {
+      "case": "PERS-15",
+      "behaviour": "an accepted first-stage rewrite (stub) is frozen as a generated definition",
+      "tiers": [
+        "CI"
+      ],
+      "result": "PASS",
+      "evidence": "backend/tests/test_personalization.py::test_an_accepted_rewrite_is_frozen_as_generated_content"
+    },
+    {
+      "case": "PREF-01..05",
+      "behaviour": "sqflite 2->3 keeps checkpoint/outbox/feedback; preference survives close+reopen; upsert; forgetGuest keeps only the deletion marker; a failed write throws",
+      "tiers": [
+        "CI"
+      ],
+      "result": "PASS",
+      "evidence": "apps/mobile/test/durable_store_test.dart (real SQLite via sqflite_common_ffi)"
+    },
+    {
+      "case": "SET-01..04",
+      "behaviour": "switch shows the stored value; never-written reads on; off writes false; a failed write reverts and reports",
+      "tiers": [
+        "CI"
+      ],
+      "result": "PASS",
+      "evidence": "apps/mobile/test/settings_screen_test.dart"
+    },
+    {
+      "case": "TX-01..03",
+      "behaviour": "stored preference travels with createSession (false / true / absent without a store)",
+      "tiers": [
+        "CI"
+      ],
+      "result": "PASS",
+      "evidence": "apps/mobile/test/personalization_ui_test.dart"
+    },
+    {
+      "case": "EX-01..04",
+      "behaviour": "player line only when personalized; transcript names variant/reason/policy/AI use; null provider never reported as AI; pre-005 session parses as null",
+      "tiers": [
+        "CI"
+      ],
+      "result": "PASS",
+      "evidence": "apps/mobile/test/personalization_ui_test.dart"
+    },
+    {
+      "case": "REM-01",
+      "behaviour": "status/reconcile/opening settings: zero permission requests",
+      "tiers": [
+        "CI"
+      ],
+      "result": "PASS",
+      "evidence": "apps/mobile/test/reminder_controller_test.dart, reminder_settings_test.dart"
+    },
+    {
+      "case": "REM-02",
+      "behaviour": "opt-in sheet -> Continue asks exactly once; Not now asks nothing",
+      "tiers": [
+        "CI"
+      ],
+      "result": "PASS",
+      "evidence": "apps/mobile/test/reminder_settings_test.dart"
+    },
+    {
+      "case": "REM-03",
+      "behaviour": "granted -> one schedule at the chosen time in the resolved IANA zone; intent persisted first",
+      "tiers": [
+        "CI"
+      ],
+      "result": "PASS",
+      "evidence": "apps/mobile/test/reminder_controller_test.dart"
+    },
+    {
+      "case": "REM-04",
+      "behaviour": "time change rewrites the same reminder; unchanged reconcile touches nothing; zone change corrected; lost request restored; nothing expires",
+      "tiers": [
+        "CI"
+      ],
+      "result": "PASS",
+      "evidence": "apps/mobile/test/reminder_controller_test.dart"
+    },
+    {
+      "case": "REM-05",
+      "behaviour": "disable cancels and keeps the chosen time",
+      "tiers": [
+        "CI"
+      ],
+      "result": "PASS",
+      "evidence": "apps/mobile/test/reminder_controller_test.dart, reminder_settings_test.dart"
+    },
+    {
+      "case": "REM-06",
+      "behaviour": "denied -> off, nothing scheduled; revoked later -> reported, not prompted; pre-13 disabled reads as not granted",
+      "tiers": [
+        "CI"
+      ],
+      "result": "PASS",
+      "evidence": "apps/mobile/test/reminder_controller_test.dart, reminder_settings_test.dart"
+    },
+    {
+      "case": "REM-07",
+      "behaviour": "deletion matrix: all succeed -> rotate; server fails -> marker+identity kept, retry same id; local purge fails -> not success; cancel fails -> server delete and purge still run, retried once, no rotation; restart resumes; late reconcile cannot reschedule",
+      "tiers": [
+        "CI"
+      ],
+      "result": "PASS",
+      "evidence": "apps/mobile/test/deletion_procedure_test.dart"
+    },
+    {
+      "case": "REM-08",
+      "behaviour": "copy is exactly the SDD's; no digit or state word; interface has no text parameter",
+      "tiers": [
+        "CI"
+      ],
+      "result": "PASS",
+      "evidence": "apps/mobile/test/reminder_copy_test.dart"
+    },
+    {
+      "case": "REM-09",
+      "behaviour": "unknown zone -> not scheduled, problem zoneUnknown, never UTC",
+      "tiers": [
+        "CI"
+      ],
+      "result": "PASS",
+      "evidence": "apps/mobile/test/reminder_controller_test.dart"
+    },
+    {
+      "case": "REM-10",
+      "behaviour": "first instant is the next calendar occurrence in the zone (22h30 across a DST start, not 24h); spring gap 02:30 -> 03:30 EDT; autumn overlap 01:30 -> first (EDT) instant",
+      "tiers": [
+        "CI"
+      ],
+      "result": "PASS",
+      "evidence": "apps/mobile/test/next_occurrence_test.dart",
+      "note": "Pins the timezone package for the first fire only. Later fires are the plugin's own recurrence: Android's ZonedDateTime.of was read in the plugin source; iOS's UNCalendarNotificationTrigger gap/overlap behaviour is NOT_RUN."
+    },
+    {
+      "case": "REM-11",
+      "behaviour": "OS delivery of a scheduled reminder on Android / iOS; reboot re-registration; DST behaviour of the plugin recurrence",
+      "tiers": [
+        "ANDROID_DEVICE",
+        "IOS_DEVICE"
+      ],
+      "result": "NOT_RUN",
+      "evidence": "no device or simulator was available; a stub provider records calls and proves nothing about delivery"
+    },
+    {
+      "case": "NATIVE-01",
+      "behaviour": "production wiring: LocalNotificationProvider injected on Android/iOS; the inert provider and every fake refused by the audit",
+      "tiers": [
+        "CI"
+      ],
+      "result": "PASS",
+      "evidence": "apps/mobile/test/production_wiring_test.dart"
+    },
+    {
+      "case": "NATIVE-02",
+      "behaviour": "merged release manifest: POST_NOTIFICATIONS, VIBRATE (plugin), RECEIVE_BOOT_COMPLETED (app) present; no exact-alarm, full-screen or DND permission; desugaring build succeeds; iOS no-codesign build succeeds",
+      "tiers": [
+        "CI"
+      ],
+      "result": "PASS",
+      "evidence": "run 34850883791: Android store readiness (merged manifest audit) and iOS store readiness jobs"
+    },
+    {
+      "case": "COMP-01",
+      "behaviour": "permissions/data inventory/SDK inventory/retention/Apple/Google mappings consistent; adaptive-wording flow declared as sent+stored+exported, reminder settings device-only",
+      "tiers": [
+        "CI"
+      ],
+      "result": "PASS",
+      "evidence": "scripts/check_compliance_consistency.py PASS; apps/mobile/test/permissions_manifest_test.dart"
+    }
+  ]
+}
